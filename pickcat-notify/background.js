@@ -243,25 +243,10 @@ async function getHelperTab() {
 }
 
 async function createHelperTab() {
-  /* 已经有一个 Pickcat 标签页就复用它，绝不多开 */
-  const exist = await getHelperTab();
-  if (exist != null) return exist;
-
-  /* 只用后台标签页，永不新建窗口：
-     放在你已经打开的窗口里，active:false —— 不切换、不抢焦点、不弹窗、任务栏也不会多东西。
-     浏览器一个窗口都没有就跳过，不帮用户拉起浏览器。 */
-  let win = null;
-  try {
-    const wins = await winGetAll({ windowTypes: ['normal'] });
-    const list = (wins || []).filter(function (w) { return w && w.id != null; });
-    win = list.find(function (w) { return w.focused; }) || list[0] || null;
-  } catch (e) { win = null; }
-  if (!win) throw new Error('浏览器没有打开的窗口，本轮跳过（不会自己开浏览器）');
-
-  const tab = await tabCreate({ url: BASE + '/', active: false, windowId: win.id });
-  if (!tab || tab.id == null) throw new Error('不能打开后台页面');
-  await pSet({ helperWindowId: null, helperTabId: tab.id });
-  return tab.id;
+  /* 这一版不再自己开任何页面、也不开任何窗口：
+     只在你自己已经开着的 Pickcat 页面里读。没有就跳过这一轮，什么都不建。
+     （浏览器规定跨站请求带不上登录 Cookie，所以必须借站内页面；页面只能由你自己开。） */
+  throw new Error('没有打开的 Pickcat 页面，本轮跳过（不会自己开页面、不会弹窗口）');
 }
 
 async function ensureHelperTab() {
