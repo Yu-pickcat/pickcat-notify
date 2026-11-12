@@ -9,6 +9,7 @@ const el = {
   list: document.getElementById('list'),
   intervalSeg: document.getElementById('intervalSeg'),
   check: document.getElementById('check'),
+  markAll: document.getElementById('markAll'),
   more: document.getElementById('more'),
   all: document.getElementById('all')
 };
@@ -111,7 +112,7 @@ function render(payload) {
 
   const bits = [];
   if (state.lastCheck) bits.push('上次 ' + clock(state.lastCheck));
-  bits.push('每 ' + (s.intervalMin || 1) + ' 分钟');
+  bits.push('每 ' + ((Number(s.intervalMin) || 1) < 1 ? Math.round((Number(s.intervalMin) || 1) * 60) + ' 秒' : (Number(s.intervalMin) || 1) + ' 分钟'));
   el.meta.textContent = bits.join(' · ');
 
   el.err.textContent = state.error
@@ -157,6 +158,17 @@ el.check.addEventListener('click', async function () {
   await pull();
   el.check.disabled = false;
   el.check.textContent = '立即检查';
+});
+
+el.markAll.addEventListener('click', async function () {
+  el.markAll.disabled = true;
+  el.markAll.textContent = '标记中…';
+  const r = await send({ type: 'PC_MARK_ALL_READ' });
+  el.markAll.disabled = false;
+  el.markAll.textContent = r && r.ok ? '已全部已读' : '全部已读';
+  await pull();
+  if (!r || !r.ok) el.err.textContent = (r && r.error) || '标记失败，先登录 Pickcat 试试';
+  setTimeout(function () { el.markAll.textContent = '全部已读'; }, 2200);
 });
 
 el.more.addEventListener('click', function () {

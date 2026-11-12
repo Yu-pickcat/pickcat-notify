@@ -10,9 +10,10 @@ const DEFAULTS = {
   mode: 'smart',
   intervalMin: 1,
   notify: true,
+  notifyTypes: { mention: true, reply: true, like: true, system: true },
+  notifyMax: 3,
   badge: true,
   sound: true,
-  openNotify: true,
   dndEnabled: false,
   dndStart: '22:30',
   dndEnd: '07:00'
@@ -53,8 +54,8 @@ function sleep(ms) {
 
 function clampMin(v) {
   var n = Number(v) || 1;
-  if (n < 1) n = 1;
-  if (n > 30) n = 30;
+  if (n < 0.5) n = 0.5;
+  if (n > 60) n = 60;
   return n;
 }
 
@@ -65,16 +66,41 @@ async function ensureAlarm() {
   await chrome.alarms.clear('pickcat-tick');
   if (!c.enabled) return;
   const m = clampMin(c.intervalMin);
-  await chrome.alarms.create('pickcat-tick', {
-    periodInMinutes: m,
-    delayInMinutes: m
-  });
+  try {
+    await chrome.alarms.create('pickcat-tick', {
+      periodInMinutes: m,
+      delayInMinutes: m
+    });
+  } catch (e) {
+    /* 老浏览器不认 30 秒，退回 1 分钟 */
+    await chrome.alarms.create('pickcat-tick', { periodInMinutes: 1, delayInMinutes: 1 });
+  }
 }
 
 async function alarmInfo() {
   const a = await chrome.alarms.get('pickcat-tick');
   if (!a) return null;
-  return { when: a.scheduledTime, period: a.periodInMinutes };
+  const c = await cfg();
+  return { when: a.scheduledTime, period: a.periodInMinutes, want: clampMin(c.intervalMin) };
+}
+
+/* 30 秒这种比 1 分钟还快的间隔，alarms 在老浏览器会被压成 1 分钟，
+   所以再挂一条 setTimeout 链；浏览器把 service worker 挂起时靠 alarms 兜着 */
+let ticker = null;
+
+async function startTicker() {
+  if (ticker) {
+    clearTimeout(ticker);
+    ticker = null;
+  }
+  const c = await cfg();
+  if (!c.enabled) return;
+  const ms = clampMin(c.intervalMin) * 60000;
+  if (ms >= 60000) return;
+  ticker = setTimeout(async function () {
+    try { await poll(); } catch (e) { /* 忽略 */ }
+    startTicker();
+  }, ms);
 }
 
 /* ---------- 读未读数 ---------- */
@@ -98,63 +124,58 @@ function describeError(status, fallback) {
   return fallback || '读取失败';
 }
 
-async function getHelperTab() {
+/* 找「已经开着」的 Pickcat 页面。你自己开着的页面优先用，绝不新建 */
+async function findOpenPickcatTab() {
   const tabs = await chrome.tabs.query({ url: BASE + '/*' });
-  const live = tabs.filter(function (t) { return t.id != null; });
+  const live = tabs.filter(function (t) { return t.id != null && !t.incognito; });
   if (!live.length) return null;
   const stored = await chrome.storage.local.get(['helperWindowId', 'helperTabId']);
-  const winId = stored.helperWindowId;
-  const tabIdSaved = stored.helperTabId;
-  if (tabIdSaved != null) {
-    const hitTab = live.find(function (t) { return t.id === tabIdSaved; });
+  if (stored.helperTabId != null) {
+    const hitTab = live.find(function (t) { return t.id === stored.helperTabId; });
     if (hitTab) return hitTab.id;
   }
-  if (winId != null) {
-    const hit = live.find(function (t) { return t.windowId === winId; });
+  if (stored.helperWindowId != null) {
+    const hit = live.find(function (t) { return t.windowId === stored.helperWindowId; });
     if (hit) return hit.id;
   }
   return live[0].id;
 }
 
-async function createHelperWindow() {
-  let lastErr = '';
+async function waitTabLoaded(tabId, timeout) {
+  const until = Date.now() + (timeout || 12000);
+  while (Date.now() < until) {
+    try {
+      const t = await chrome.tabs.get(tabId);
+      if (t && t.status === 'complete') return true;
+    } catch (e) { return false; }
+    await sleep(600);
+  }
+  return false;
+}
 
-  // 1) 首选：把页面放进一个不抢焦点的后台标签页（不额外弹窗口，最不打扰）
+/* 直连也读不到时才用的兜底：开一个最小化的独立小窗（不进标签栏、不抢焦点），之后一直复用 */
+async function createHiddenPage() {
+  let lastErr = '';
   try {
-    const tab = await chrome.tabs.create({ url: BASE + '/', active: false });
-    await chrome.storage.local.set({ helperWindowId: null, helperTabId: tab.id });
-    return tab.id;
+    const win = await chrome.windows.create({ url: BASE + '/', type: 'popup', width: 420, height: 320, focused: false });
+    if (win && win.tabs && win.tabs[0] && win.tabs[0].id != null) {
+      const tabId = win.tabs[0].id;
+      await chrome.storage.local.set({ helperWindowId: win.id != null ? win.id : null, helperTabId: tabId });
+      await waitTabLoaded(tabId, 12000);
+      /* 页面加载期间浏览器会把最小化还原，加载完再收起来，连压三次防它回弹 */
+      for (let i = 0; i < 3; i++) {
+        if (win.id != null) {
+          try { await chrome.windows.update(win.id, { state: 'minimized', focused: false }); } catch (e) { /* 忽略 */ }
+        }
+        await sleep(600);
+      }
+      return tabId;
+    }
+    lastErr = '窗口没建出来';
   } catch (e) {
     lastErr = (e && e.message) || String(e);
   }
-
-  // 2) 再试：独立小弹窗（不指定坐标，Chrome 会拒绝屏幕外坐标）
-  try {
-    const win = await chrome.windows.create({ url: BASE + '/', type: 'popup', width: 380, height: 300, focused: false });
-    await chrome.storage.local.set({ helperWindowId: win && win.id != null ? win.id : null, helperTabId: null });
-    if (win && win.tabs && win.tabs[0] && win.tabs[0].id != null) return win.tabs[0].id;
-    return null;
-  } catch (e) {
-    lastErr = lastErr + ' / ' + ((e && e.message) || String(e));
-  }
-
-  // 3) 最后：普通窗口
-  try {
-    const win = await chrome.windows.create({ url: BASE + '/', focused: false });
-    await chrome.storage.local.set({ helperWindowId: win && win.id != null ? win.id : null, helperTabId: null });
-    if (win && win.tabs && win.tabs[0] && win.tabs[0].id != null) return win.tabs[0].id;
-    return null;
-  } catch (e) {
-    lastErr = lastErr + ' / ' + ((e && e.message) || String(e));
-  }
-
-  throw new Error('不能打开后台页面：' + lastErr);
-}
-
-async function ensureHelperTab() {
-  const tabId = await getHelperTab();
-  if (tabId != null) return tabId;
-  return await createHelperWindow();
+  throw new Error('打不开后台页面：' + lastErr);
 }
 
 async function sendToTab(tabId, msg) {
@@ -171,54 +192,119 @@ async function sendToTab(tabId, msg) {
   return null;
 }
 
+async function readFromTab(tabId, via) {
+  const resp = await sendToTab(tabId, { type: 'PC_READ_UNREAD' });
+  if (!resp) throw new Error('这个页面没响应（可能还没加载完）');
+  if (!resp.ok) throw new Error(describeError(resp.status, resp.error));
+  return { count: Number(resp.count) || 0, items: resp.items || [], via: via };
+}
+
 async function readByHelper() {
-  let tabId = await ensureHelperTab();
-  if (tabId == null) throw new Error('不能打开后台窗口');
+  let tabId = await findOpenPickcatTab();
+  if (tabId == null) tabId = await createHiddenPage();
   let resp = await sendToTab(tabId, { type: 'PC_READ_UNREAD' });
   if (!resp) {
-    tabId = await createHelperWindow();
+    tabId = await createHiddenPage();
     resp = await sendToTab(tabId, { type: 'PC_READ_UNREAD' });
   }
-  if (!resp) throw new Error('后台窗口没响应（页面可能没加载出来）');
+  if (!resp) throw new Error('后台页面没响应（页面可能没加载出来）');
   if (!resp.ok) throw new Error(describeError(resp.status, resp.error));
   return { count: Number(resp.count) || 0, items: resp.items || [], via: 'window' };
 }
 
+async function readDirect() {
+  const d = await directFetch(API_SUMMARY).catch(function () {
+    return { ok: false, status: 0 };
+  });
+  if (!d.ok) throw new Error(describeError(d.status));
+  const list = await directFetch(API_LIST).catch(function () { return { ok: false }; });
+  const items = (list.ok && list.data && (list.data.items || (list.data.data && list.data.data.items))) || [];
+  return { count: Number(d.data && d.data.unreadCount) || 0, items: items, via: 'direct' };
+}
+
+/* 读取顺序：
+   智能 = 已开着的 Pickcat 页面 → 直连（什么都不开）→ 兜底后台页（最小化小窗）→ 还不行就报错
+   只读已开页面 = 只读你自己开的那个页面，一个都不新建
+   只直连 = 一个页面都不开
+   后台页 = 直接用（或第一次建一个）最小化后台页 */
 async function readUnread() {
   const c = await cfg();
-  let directStatus = 0;
 
-  if (c.mode !== 'window') {
-    const d = await directFetch(API_SUMMARY).catch(function () {
-      return { ok: false, status: 0 };
-    });
-    if (d.ok) {
-      const list = await directFetch(API_LIST).catch(function () { return { ok: false }; });
-      const items = (list.ok && list.data && (list.data.items || (list.data.data && list.data.data.items))) || [];
-      return { count: Number(d.data && d.data.unreadCount) || 0, items: items, via: 'direct' };
+  if (c.mode === 'page') {
+    const tabId = await findOpenPickcatTab();
+    if (tabId == null) throw new Error('没开 Pickcat 页面（这个模式只读你已经打开的页面）');
+    return await readFromTab(tabId, 'page');
+  }
+
+  if (c.mode === 'direct') return await readDirect();
+
+  if (c.mode === 'window') return await readByHelper();
+
+  const openTab = await findOpenPickcatTab();
+  if (openTab != null) {
+    try {
+      return await readFromTab(openTab, 'page');
+    } catch (e) {
+      /* 页面没响应就继续走直连 */
     }
-    directStatus = d.status;
-    if (c.mode === 'direct') throw new Error(describeError(d.status));
+  }
+
+  const d = await directFetch(API_SUMMARY).catch(function () {
+    return { ok: false, status: 0 };
+  });
+  if (d.ok) {
+    const list = await directFetch(API_LIST).catch(function () { return { ok: false }; });
+    const items = (list.ok && list.data && (list.data.items || (list.data.data && list.data.data.items))) || [];
+    return { count: Number(d.data && d.data.unreadCount) || 0, items: items, via: 'direct' };
   }
 
   const byHelper = await readByHelper();
-  if (directStatus && !byHelper.count) byHelper.hint = describeError(directStatus);
+  if (d.status && !byHelper.count) byHelper.hint = describeError(d.status);
   return byHelper;
 }
 
 /* ---------- 通知 ---------- */
 
+/* 四类提醒开关，和站点自己的四个分类一一对应 */
+const TYPE_CATEGORY = {
+  mention: ['USER_MENTIONED', 'WORK_COMMENT_MENTIONED'],
+  reply: ['REPLY_CREATED', 'WORK_COMMENT_CREATED', 'WORK_COMMENT_REPLY_CREATED'],
+  like: ['POST_LIKED', 'WORK_LIKED', 'WORK_COMMENT_LIKED'],
+  system: ['MANAGEMENT_ACTION', 'TOPIC_EVENT', 'LEVEL_CERTIFICATION', 'USER_FOLLOWED', 'TAKEDOWN_APPEAL_DECIDED', 'QUESTION_DUPLICATE_REQUEST_DECIDED']
+};
+
+function categoryOf(type) {
+  for (const key in TYPE_CATEGORY) {
+    if (TYPE_CATEGORY[key].indexOf(type) >= 0) return key;
+  }
+  return 'system';
+}
+
+/* 只留下用户开着的那几类；全关了就等于不弹 */
+function filterByTypes(items, types) {
+  const on = Object.assign({ mention: true, reply: true, like: true, system: true }, types || {});
+  if (!Array.isArray(items)) return [];
+  return items.filter(function (it) {
+    if (!it || typeof it !== 'object') return false;
+    return on[categoryOf(it.type)] !== false;
+  });
+}
+
 const TYPE_ACTION = {
   USER_MENTIONED: '在帖子里 @了你',
+  WORK_COMMENT_MENTIONED: '在作品评论里 @了你',
+  REPLY_CREATED: '回复了你的帖子',
+  WORK_COMMENT_CREATED: '评论了你的作品',
+  WORK_COMMENT_REPLY_CREATED: '回复了你在作品下的评论',
+  POST_LIKED: '赞了你的帖子',
+  WORK_LIKED: '赞了你的作品',
+  WORK_COMMENT_LIKED: '赞了你的评论',
   USER_FOLLOWED: '关注了你',
-  COMMENT_REPLY: '回复了你的评论',
-  POST_REPLY: '回复了你的帖子',
   TOPIC_EVENT: '你关注的帖子有新动态',
-  MANAGEMENT_ACTION: '给你发了一条管理通知',
-  LIKE: '赞了你',
-  LIKE_MILESTONE: '你的内容又收到了新的赞',
+  MANAGEMENT_ACTION: '给你发了管理通知',
   LEVEL_CERTIFICATION: '等级认证出结果了',
-  TAKEDOWN_APPEAL_DECIDED: '下架申诉有结果了'
+  TAKEDOWN_APPEAL_DECIDED: '下架申诉有结果了',
+  QUESTION_DUPLICATE_REQUEST_DECIDED: '题目重复提交有结果了'
 };
 
 function firstOf(obj, keys) {
@@ -239,17 +325,22 @@ function normalizeItem(it) {
   if (!it || typeof it !== 'object') return null;
   const d = it.details || {};
   const actorObj = d.actor || d.user || {};
-  const actor = firstOf(actorObj, ['nickname', 'displayName', 'name', 'username']);
+  const actor = firstOf(actorObj, ['nickname', 'username', 'displayName', 'name']);
   const avatar = firstOf(actorObj, ['avatarUrl', 'avatar', 'avatar_url', 'avatarPath']);
-  const action = TYPE_ACTION[it.type] || '有新动态';
+  let avatarUrl = String(avatar || '');
+  if (!avatarUrl && actorObj.avatar && typeof actorObj.avatar === 'object') {
+    avatarUrl = String(actorObj.avatar.url || '');
+  }
+  const action = TYPE_ACTION[it.type] || '有新消息';
   let excerpt = firstOf(d, ['excerpt', 'content', 'title', 'text']);
-  if (!excerpt && d.comment) excerpt = firstOf(d.comment, ['excerpt', 'content']);
+  if (!excerpt && d.comment) excerpt = firstOf(d.comment, ['excerpt', 'content', 'body']);
   if (!excerpt && d.post) excerpt = firstOf(d.post, ['title', 'excerpt', 'content']);
   if (!excerpt && d.topic) excerpt = firstOf(d.topic, ['title']);
+  if (!excerpt && d.work) excerpt = firstOf(d.work, ['workName', 'title', 'name']);
   if (!excerpt && d.body) excerpt = firstOf(d.body, ['title', 'excerpt']);
   const isRead = !(it.readAt === null || typeof it.readAt === 'undefined');
   const ts = Number(firstOf(it, ['createdAt', 'created_at', 'time']) ) || 0;
-  return { type: it.type || '', actor: flat(actor, 24), avatar: String(avatar || ''),
+  return { type: it.type || '', actor: flat(actor, 24), avatar: avatarUrl,
            action: action, excerpt: flat(excerpt, 60), read: isRead, ts: ts };
 }
 
@@ -263,30 +354,32 @@ function arrangeItems(items) {
   return unread.concat(read);
 }
 
-/* 通知标题与正文：尽量写清是谁、做了什么 */
-function noteText(count, items, delta) {
+/* 通知文案：固定写成「谁 + 做了什么 + 涉及什么内容」，不说空话 */
+function noteText(count, items, delta, max) {
   const list = arrangeItems(items);
   const unread = list.filter(function (i) { return !i.read; });
-  const use = (unread.length ? unread : list).slice(0, 3);
+  const use = (unread.length ? unread : list).slice(0, Math.max(1, Number(max) || 3));
 
-  let title = 'Pickcat 有新消息';
-  let message = '';
+  if (!use.length) {
+    return { title: 'Pickcat 有新消息', message: '你现在有 ' + count + ' 条未读' };
+  }
 
   if (use.length === 1) {
     const one = use[0];
-    title = (one.actor ? one.actor + ' ' : '') + one.action;
-    message = one.excerpt || ('你现在有 ' + count + ' 条未读');
-  } else if (use.length > 1) {
-    title = 'Pickcat · ' + count + ' 条新消息';
-    message = use.map(function (i) {
-      return '· ' + (i.actor ? i.actor + ' ' : '') + i.action + (i.excerpt ? '：' + i.excerpt : '');
-    }).join('\n');
-    if (count > use.length) message += '\n· 还有 ' + (count - use.length) + ' 条…';
-  } else {
-    message = '你现在有 ' + count + ' 条未读';
+    const who = one.actor || '有人';
+    const title = who + ' ' + one.action;
+    const message = one.excerpt
+      ? '内容：' + one.excerpt
+      : (count > 1 ? '你现在有 ' + count + ' 条未读，点开消息中心看详情' : '点开消息中心看详情');
+    return { title: title, message: message };
   }
 
-  return { title: title, message: message };
+  let message = use.map(function (i) {
+    return '· ' + (i.actor || '有人') + ' ' + i.action + (i.excerpt ? '：' + i.excerpt : '');
+  }).join('\n');
+  if (count > use.length) message += '\n· 还有 ' + (count - use.length) + ' 条';
+
+  return { title: 'Pickcat · ' + count + ' 条新消息', message: message };
 }
 
 /* 弹窗里显示的最近三条 */
@@ -316,7 +409,7 @@ function inDnd(c) {
 
 async function showNote(count, items, delta) {
   const c = await cfg();
-  const text = noteText(count, items, delta);
+  const text = noteText(count, items, delta, c.notifyMax);
 
   chrome.notifications.create('pickcat-' + Date.now(), {
     type: 'basic',
@@ -375,7 +468,8 @@ async function poll() {
     await updateBadge(res.count, c);
 
     if (c.notify && res.count > 0 && res.count > prevCount && !inDnd(c)) {
-      await showNote(res.count, res.items, res.count - prevCount);
+      const picked = filterByTypes(res.items, c.notifyTypes);
+      if (picked.length) await showNote(res.count, picked, res.count - prevCount);
     }
     return { ok: true, count: res.count, via: res.via };
   } catch (e) {
@@ -392,7 +486,10 @@ async function poll() {
 /* ---------- 事件 ---------- */
 
 chrome.alarms.onAlarm.addListener(function (alarm) {
-  if (alarm.name === 'pickcat-tick') poll();
+  if (alarm.name === 'pickcat-tick') {
+    poll();
+    startTicker();
+  }
 });
 
 chrome.runtime.onInstalled.addListener(async function (details) {
@@ -400,6 +497,7 @@ chrome.runtime.onInstalled.addListener(async function (details) {
   if (!got.settings) await chrome.storage.local.set({ settings: DEFAULTS });
   await ensureAlarm();
   poll();
+  startTicker();
 
   if (!got.welcomeShown) {
     await chrome.storage.local.set({ welcomeShown: true });
@@ -427,6 +525,7 @@ chrome.runtime.onInstalled.addListener(async function (details) {
 chrome.runtime.onStartup.addListener(async function () {
   await ensureAlarm();
   poll();
+  startTicker();
 });
 
 chrome.notifications.onClicked.addListener(async function (id) {
@@ -434,8 +533,8 @@ chrome.notifications.onClicked.addListener(async function (id) {
     chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
     return;
   }
-  const c = await cfg();
-  chrome.tabs.create({ url: c.openNotify ? BASE + '/notifications' : BASE + '/' });
+  /* 点通知固定直达消息中心 */
+  chrome.tabs.create({ url: BASE + '/notifications' });
 });
 
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
@@ -448,15 +547,39 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     return true;
   }
 
+  if (msg.type === 'PC_MARK_ALL_READ') {
+    (async function () {
+      try {
+        let tabId = await findOpenPickcatTab();
+        if (tabId == null) tabId = await createHiddenPage();
+        const r = await sendToTab(tabId, { type: 'PC_MARK_ALL_READ' });
+        if (!r) throw new Error('页面没响应（可能还没加载完）');
+        if (!r.ok) throw new Error(describeError(r.status, r.error));
+        await saveSt({ unread: 0, lastCount: 0, recent: [], error: '' });
+        await updateBadge(0, await cfg());
+        sendResponse({ ok: true });
+      } catch (e) {
+        sendResponse({ ok: false, error: String((e && e.message) || e) });
+      }
+    })();
+    return true;
+  }
+
   if (msg.type === 'PC_SAVE') {
     (async function () {
       const cur = await cfg();
       const next = Object.assign({}, cur, msg.patch || {});
       if (msg.patch && msg.patch.intervalMin != null) next.intervalMin = clampMin(msg.patch.intervalMin);
+      if (msg.patch && msg.patch.notifyMax != null) next.notifyMax = Math.max(1, Math.min(5, Number(msg.patch.notifyMax) || 3));
       await chrome.storage.local.set({ settings: next });
-      await ensureAlarm();
-      await updateBadge((await st()).unread || 0, next);
-      if (next.enabled) poll();
+      try {
+        await ensureAlarm();
+        await startTicker();
+        await updateBadge((await st()).unread || 0, next);
+        if (next.enabled) poll();
+      } catch (e) {
+        /* 闹钟/角标出问题也不能让设置页卡住 */
+      }
       sendResponse({ settings: next, state: await st() });
     })();
     return true;

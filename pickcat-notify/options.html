@@ -36,32 +36,54 @@
     <img src="icons/icon48.png" alt="">
     <div>
       <h1>设置</h1>
-      <div class="sub">Pickcat 通知助手</div>
+      <div class="sub">Pickcat 通知助手 <span id="ver"></span></div>
     </div>
   </header>
 
   <div class="card">
     <div class="sec-title">检查</div>
-    <div class="row">
-      <div>
-        <div class="row-label">多久查一次</div>
-        <div class="row-desc">间隔越短越及时，也越费流量</div>
-      </div>
-      <div class="seg" id="intervalSeg">
+    <div class="row row-col">
+      <div class="row-label">多久查一次</div>
+      <div class="row-desc">间隔越短越及时，也越费流量；30 秒是浏览器允许的最快速度</div>
+      <div class="seg seg-fill" id="intervalSeg">
+        <button type="button" data-v="0.5">30 秒</button>
         <button type="button" data-v="1">1 分钟</button>
-        <button type="button" data-v="2">2 分钟</button>
+        <button type="button" data-v="3">3 分钟</button>
         <button type="button" data-v="5">5 分钟</button>
+        <button type="button" data-v="10">10 分钟</button>
+        <button type="button" data-v="30">半小时</button>
       </div>
     </div>
-    <div class="row">
-      <div>
-        <div class="row-label">检查方式</div>
-        <div class="row-desc" id="modeDesc">智能：先直连接口，读不到再用后台页面</div>
+    <div class="row row-col">
+      <div class="row-label">检查方式</div>
+      <div class="row-desc" id="modeDesc">智能：你开着 Pickcat 页面就直接读它；没开就直连接口</div>
+      <div class="inline-line">
+        <div class="seg" id="modeSeg">
+          <button type="button" data-v="smart">智能</button>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="modeOther">其他方式…</button>
       </div>
-      <div class="seg" id="modeSeg">
-        <button type="button" data-v="smart">智能</button>
-        <button type="button" data-v="direct">只直连</button>
-        <button type="button" data-v="window">只用后台页面</button>
+    </div>
+  </div>
+
+  <div class="mask" id="modeMask">
+    <div class="sheet">
+      <div class="sheet-title">换个检查方式</div>
+      <button type="button" class="opt" data-v="page">
+        <b>只读已开页面</b>
+        <small>只读你自己打开的那个 Pickcat 页面，一个都不新建；没开就报错</small>
+      </button>
+      <button type="button" class="opt" data-v="direct">
+        <b>只直连</b>
+        <small>什么页面都不开，最省资源；读不到（比如登录 Cookie 带不上）就提示未登录</small>
+      </button>
+      <button type="button" class="opt" data-v="window">
+        <b>后台页兜底</b>
+        <small>一直用最小化的后台小窗读，最稳，但会占一个后台窗口</small>
+      </button>
+      <div class="sheet-foot">
+        <button type="button" class="btn btn-ghost btn-sm" id="modeBack">返回智能</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="modeCancel">取消</button>
       </div>
     </div>
   </div>
@@ -75,6 +97,18 @@
       </div>
       <div class="switch" id="swNotify"><div class="knob"></div></div>
     </div>
+    <div id="notifyDeps">
+    <div class="row row-col">
+      <div class="row-label">通知里最多列几条</div>
+      <div class="row-desc">消息多的时候只列最近的，其余写「还有 N 条」</div>
+      <div class="seg seg-fill" id="maxSeg">
+        <button type="button" data-v="1">1 条</button>
+        <button type="button" data-v="2">2 条</button>
+        <button type="button" data-v="3">3 条</button>
+        <button type="button" data-v="4">4 条</button>
+        <button type="button" data-v="5">5 条</button>
+      </div>
+    </div>
     <div class="row">
       <div class="row-label">图标上显示未读数</div>
       <div class="switch" id="swBadge"><div class="knob"></div></div>
@@ -83,9 +117,34 @@
       <div class="row-label">通知带提示音</div>
       <div class="switch" id="swSound"><div class="knob"></div></div>
     </div>
+    <div class="sub-title">哪些消息要弹通知</div>
     <div class="row">
-      <div class="row-label">点通知打开消息中心</div>
-      <div class="switch" id="swOpen"><div class="knob"></div></div>
+      <div>
+        <div class="row-label">提到我的（@）</div>
+        <div class="row-desc">帖子里、作品评论里点到了你的名字</div>
+      </div>
+      <div class="check" id="swMention"></div>
+    </div>
+    <div class="row">
+      <div>
+        <div class="row-label">回复我的</div>
+        <div class="row-desc">有人回复你的帖子、评论你的作品、回你的作品评论</div>
+      </div>
+      <div class="check" id="swReply"></div>
+    </div>
+    <div class="row">
+      <div>
+        <div class="row-label">收到的赞</div>
+        <div class="row-desc">帖子、作品、评论被点赞</div>
+      </div>
+      <div class="check" id="swLike"></div>
+    </div>
+    <div class="row">
+      <div>
+        <div class="row-label">系统通知</div>
+        <div class="row-desc">谁关注了你、管理通知、等级认证、申诉结果、关注帖动态</div>
+      </div>
+      <div class="check" id="swSystem"></div>
     </div>
     <div class="row">
       <div class="row-label">免打扰时段</div>
@@ -93,6 +152,7 @@
     </div>
     <div class="dnd" id="dndBox">
       <input type="time" id="dndStart"><span>到</span><input type="time" id="dndEnd"><span>不弹通知</span>
+    </div>
     </div>
   </div>
 

@@ -1,21 +1,34 @@
 /* 设置页：保存配置 + 后台体检 + 关页验证 */
 
 const MODE_DESC = {
-  smart: '智能：先直连接口，读不到再用后台页面',
-  direct: '只直连接口：一个页面都不开，最省资源',
-  window: '只用后台页面：最稳，后台留一个 Pickcat 标签页'
+  smart: '智能：自动挑最省的办法——你先开着 Pickcat 页面就直接读它；没开就直连接口（一个页面都不开）；直连还读不到才建一个最小化的后台页兜底；兜底也不成，就报错告诉你原因',
+  page: '只读已开页面：只读你自己打开的那个 Pickcat 页面，一个页面都不新建；没开就直接报错',
+  direct: '只直连：什么页面都不开，最省资源；读不到（比如跨站 Cookie 带不上）就报未登录',
+  window: '后台页兜底：一直在最小化的后台页里读，最稳，但会占一个后台小窗'
 };
 
-const VIA = { direct: '直连接口', window: '后台页面' };
+const VIA = { page: '已打开的页面', direct: '直连接口', window: '后台页面' };
+
+const MODE_NAME = { smart: '智能', page: '只读已开页面', direct: '只直连', window: '后台页兜底' };
 
 const el = {
+  ver: document.getElementById('ver'),
+  notifyDeps: document.getElementById('notifyDeps'),
   intervalSeg: document.getElementById('intervalSeg'),
   modeSeg: document.getElementById('modeSeg'),
+  modeOther: document.getElementById('modeOther'),
+  modeMask: document.getElementById('modeMask'),
+  modeBack: document.getElementById('modeBack'),
+  modeCancel: document.getElementById('modeCancel'),
   modeDesc: document.getElementById('modeDesc'),
+  maxSeg: document.getElementById('maxSeg'),
   swNotify: document.getElementById('swNotify'),
   swBadge: document.getElementById('swBadge'),
   swSound: document.getElementById('swSound'),
-  swOpen: document.getElementById('swOpen'),
+  swMention: document.getElementById('swMention'),
+  swReply: document.getElementById('swReply'),
+  swLike: document.getElementById('swLike'),
+  swSystem: document.getElementById('swSystem'),
   swDnd: document.getElementById('swDnd'),
   dndBox: document.getElementById('dndBox'),
   dndStart: document.getElementById('dndStart'),
@@ -50,6 +63,11 @@ function row(dot, key, value) {
   return '<span class="dot ' + dot + '"></span><span class="k">' + key + '</span>' + value;
 }
 
+function stepText(min) {
+  const m = Number(min) || 1;
+  return m < 1 ? Math.round(m * 60) + ' 秒' : Math.round(m) + ' 分钟';
+}
+
 function markSeg(node, val) {
   if (!node) return;
   Array.prototype.forEach.call(node.children, function (b) {
@@ -60,12 +78,20 @@ function markSeg(node, val) {
 function renderSettings(s) {
   settings = s;
   markSeg(el.intervalSeg, s.intervalMin || 1);
-  markSeg(el.modeSeg, s.mode || 'smart');
-  el.modeDesc.textContent = MODE_DESC[s.mode || 'smart'];
+  markSeg(el.modeSeg, (s.mode || 'smart') === 'smart' ? 'smart' : '');
+  const mode = s.mode || 'smart';
+  el.modeOther.textContent = mode === 'smart' ? '其他方式…' : MODE_NAME[mode] + ' · 改';
+  markSeg(el.maxSeg, s.notifyMax || 3);
+  el.modeDesc.textContent = MODE_DESC[mode];
+  el.notifyDeps.classList.toggle('off', !s.notify);
   el.swNotify.classList.toggle('on', !!s.notify);
   el.swBadge.classList.toggle('on', !!s.badge);
   el.swSound.classList.toggle('on', !!s.sound);
-  el.swOpen.classList.toggle('on', !!s.openNotify);
+  const nt = Object.assign({ mention: true, reply: true, like: true, system: true }, s.notifyTypes || {});
+  el.swMention.classList.toggle('on', nt.mention !== false);
+  el.swReply.classList.toggle('on', nt.reply !== false);
+  el.swLike.classList.toggle('on', nt.like !== false);
+  el.swSystem.classList.toggle('on', nt.system !== false);
   el.swDnd.classList.toggle('on', !!s.dndEnabled);
   el.dndBox.classList.toggle('show', !!s.dndEnabled);
   el.dndStart.value = s.dndStart || '22:30';
@@ -78,7 +104,10 @@ function renderDiag(d) {
   const lines = [];
 
   if (alarm) {
-    lines.push(row('ok', '定时任务', '运行中 · 每 ' + Math.round(alarm.period) + ' 分钟 · 下次 ' + clock(alarm.when)));
+    lines.push(row('ok', '定时任务', '运行中 · 每 ' + stepText(alarm.period) + ' · 下次 ' + clock(alarm.when)));
+    if (alarm.want && Number(alarm.want) < Number(alarm.period)) {
+      lines.push(row('ok', '间隔补充', '你要的 ' + stepText(alarm.want) + ' 用计时器跑；浏览器闹钟最细 ' + stepText(alarm.period) + '，只当兜底'));
+    }
   } else {
     lines.push(row('bad', '定时任务', '没有注册（总开关可能关着）'));
   }
@@ -95,9 +124,11 @@ function renderDiag(d) {
   }
 
   if (d.helperTab != null) {
-    lines.push(row('ok', '后台页面', '已就绪（标签页 ' + d.helperTab + '）'));
+    lines.push(row('ok', '后台页面', '兜底页已建好（最小化，不进标签栏）'));
   } else if (d.helper != null) {
-    lines.push(row('ok', '后台页面', '已就绪（窗口 ' + d.helper + '）'));
+    lines.push(row('ok', '后台页面', '兜底页已建好（窗口 ' + d.helper + '，最小化）'));
+  } else {
+    lines.push(row('', '后台页面', '还没建过（只有直连读不到时才会建）'));
   }
 
   el.diag.innerHTML = lines.join('<br>');
@@ -116,6 +147,7 @@ async function save(patch) {
   await refreshDiag();
 }
 
+/* 快捷档 */
 el.intervalSeg.addEventListener('click', function (e) {
   const b = e.target.closest('button');
   if (!b || !b.dataset.v) return;
@@ -123,14 +155,42 @@ el.intervalSeg.addEventListener('click', function (e) {
   save({ intervalMin: Number(b.dataset.v) });
 });
 
+/* 检查方式：默认「智能」，其他三个收在弹窗里 */
 el.modeSeg.addEventListener('click', function (e) {
   const b = e.target.closest('button');
   if (!b || !b.dataset.v) return;
-  markSeg(el.modeSeg, b.dataset.v);
   save({ mode: b.dataset.v });
 });
 
-[['swNotify', 'notify'], ['swBadge', 'badge'], ['swSound', 'sound'], ['swOpen', 'openNotify']]
+function openMask() { el.modeMask.classList.add('show'); }
+function closeMask() { el.modeMask.classList.remove('show'); }
+
+el.modeOther.addEventListener('click', openMask);
+el.modeCancel.addEventListener('click', closeMask);
+el.modeBack.addEventListener('click', function () {
+  closeMask();
+  save({ mode: 'smart' });
+});
+el.modeMask.addEventListener('click', function (e) {
+  if (e.target === el.modeMask) closeMask();
+  const b = e.target.closest('.opt');
+  if (b && b.dataset.v) {
+    closeMask();
+    save({ mode: b.dataset.v });
+  }
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') closeMask();
+});
+
+el.maxSeg.addEventListener('click', function (e) {
+  const b = e.target.closest('button');
+  if (!b || !b.dataset.v) return;
+  markSeg(el.maxSeg, b.dataset.v);
+  save({ notifyMax: Number(b.dataset.v) });
+});
+
+[['swNotify', 'notify'], ['swBadge', 'badge'], ['swSound', 'sound']]
   .forEach(function (pair) {
     const node = el[pair[0]];
     node.addEventListener('click', function () {
@@ -139,6 +199,19 @@ el.modeSeg.addEventListener('click', function (e) {
       const patch = {};
       patch[pair[1]] = next;
       save(patch);
+    });
+  });
+
+/* 四类消息单独开 / 关 */
+[['swMention', 'mention'], ['swReply', 'reply'], ['swLike', 'like'], ['swSystem', 'system']]
+  .forEach(function (pair) {
+    const node = el[pair[0]];
+    node.addEventListener('click', function () {
+      const next = !node.classList.contains('on');
+      node.classList.toggle('on', next);
+      const nt = Object.assign({ mention: true, reply: true, like: true, system: true }, (settings && settings.notifyTypes) || {});
+      nt[pair[1]] = next;
+      save({ notifyTypes: nt });
     });
   });
 
@@ -185,6 +258,8 @@ el.closedTest.addEventListener('click', async function () {
   el.diag.innerHTML = head + '<br>' + body;
   setTimeout(refreshDiag, 6000);
 });
+
+el.ver.textContent = 'v' + chrome.runtime.getManifest().version;
 
 refreshDiag();
 setInterval(refreshDiag, 5000);

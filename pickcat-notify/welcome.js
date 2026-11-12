@@ -7,7 +7,7 @@ const el = {
   close: document.getElementById('close')
 };
 
-const VIA = { direct: '直连接口', window: '后台页面' };
+const VIA = { page: '已打开的页面', direct: '直连接口', window: '后台页面' };
 
 function send(msg) {
   return new Promise(function (resolve) {
@@ -43,7 +43,7 @@ function render(d) {
   }
 
   if (alarm) {
-    lines.push(line('ok', '定时任务', '运行中 · 每 ' + Math.round(alarm.period) + ' 分钟'));
+    lines.push(line('ok', '定时任务', '运行中 · 每 ' + (alarm.period < 1 ? Math.round(alarm.period * 60) + ' 秒' : Math.round(alarm.period) + ' 分钟')));
   } else {
     lines.push(line('bad', '定时任务', '没在运行（总开关可能关着）'));
   }
