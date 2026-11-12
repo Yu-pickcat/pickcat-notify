@@ -68,22 +68,26 @@
 
   <div class="mask" id="modeMask">
     <div class="sheet">
-      <div class="sheet-title">换个检查方式</div>
-      <button type="button" class="opt" data-v="page">
+      <div class="sheet-title">自己排读取顺序</div>
+      <button type="button" class="opt pick" data-v="page">
         <b>只读已开页面</b>
-        <small>只读你自己打开的那个 Pickcat 页面，一个都不新建；没开就报错</small>
+        <small>只读你自己打开的那个 Pickcat 页面，一个都不新建；没开就算这一步没成</small>
+        <span class="pick-mark"><i class="ord"></i></span>
       </button>
-      <button type="button" class="opt" data-v="direct">
+      <button type="button" class="opt pick" data-v="direct">
         <b>只直连</b>
-        <small>什么页面都不开，最省资源；读不到（比如登录 Cookie 带不上）就提示未登录</small>
+        <small>什么页面都不开，最省资源；读不到（比如登录 Cookie 带不上）就算这一步没成</small>
+        <span class="pick-mark"><i class="ord"></i></span>
       </button>
-      <button type="button" class="opt" data-v="window">
+      <button type="button" class="opt pick" data-v="window">
         <b>后台页兜底</b>
-        <small>一直用最小化的后台小窗读，最稳，但会占一个后台窗口</small>
+        <small>用最小化的后台小窗读，最稳，但会占一个后台窗口</small>
+        <span class="pick-mark"><i class="ord"></i></span>
       </button>
+      <div class="sheet-tip">勾几个就按勾的先后依次试；三个全勾上就等同于「智能」。</div>
       <div class="sheet-foot">
         <button type="button" class="btn btn-ghost btn-sm" id="modeBack">返回智能</button>
-        <button type="button" class="btn btn-ghost btn-sm" id="modeCancel">取消</button>
+        <button type="button" class="btn btn-primary btn-sm" id="modeApply">用这套顺序</button>
       </div>
     </div>
   </div>

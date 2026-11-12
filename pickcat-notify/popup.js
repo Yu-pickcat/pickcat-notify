@@ -2,6 +2,7 @@
 
 const el = {
   sw: document.getElementById('sw'),
+  ver: document.getElementById('ver'),
   unread: document.getElementById('unread'),
   tag: document.getElementById('tag'),
   meta: document.getElementById('meta'),
@@ -178,5 +179,10 @@ el.more.addEventListener('click', function () {
 el.all.addEventListener('click', function () {
   chrome.tabs.create({ url: 'https://pickcat.dao3.fun/notifications' });
 });
+
+if (el.ver) {
+  const mf = chrome.runtime.getManifest();
+  el.ver.textContent = mf.version_name || ('v' + mf.version);
+}
 
 pull();

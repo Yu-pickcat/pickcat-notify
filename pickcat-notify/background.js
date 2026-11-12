@@ -8,6 +8,7 @@ const ICON_PATH = 'icons/icon128.png';
 const DEFAULTS = {
   enabled: true,
   mode: 'smart',
+  chain: ['page', 'direct', 'window'],
   intervalMin: 1,
   notify: true,
   notifyTypes: { mention: true, reply: true, like: true, system: true },
@@ -224,43 +225,62 @@ async function readDirect() {
 
 /* 读取顺序：
    智能 = 已开着的 Pickcat 页面 → 直连（什么都不开）→ 兜底后台页（最小化小窗）→ 还不行就报错
+   自定义 = 按你勾选的顺序依次试，全勾上就等于智能
    只读已开页面 = 只读你自己开的那个页面，一个都不新建
    只直连 = 一个页面都不开
    后台页 = 直接用（或第一次建一个）最小化后台页 */
+function modeChain(c) {
+  const all = ['page', 'direct', 'window'];
+  if (c && c.mode === 'custom' && Array.isArray(c.chain)) {
+    const picked = c.chain.filter(function (s) { return all.indexOf(s) >= 0; });
+    if (picked.length === 3) return all;
+    if (picked.length) return picked;
+  }
+  if (c && c.mode === 'page') return ['page'];
+  if (c && c.mode === 'direct') return ['direct'];
+  if (c && c.mode === 'window') return ['window'];
+  return all;
+}
+
 async function readUnread() {
   const c = await cfg();
+  const chain = modeChain(c);
+  let lastErr = null;
 
-  if (c.mode === 'page') {
-    const tabId = await findOpenPickcatTab();
-    if (tabId == null) throw new Error('没开 Pickcat 页面（这个模式只读你已经打开的页面）');
-    return await readFromTab(tabId, 'page');
-  }
-
-  if (c.mode === 'direct') return await readDirect();
-
-  if (c.mode === 'window') return await readByHelper();
-
-  const openTab = await findOpenPickcatTab();
-  if (openTab != null) {
-    try {
-      return await readFromTab(openTab, 'page');
-    } catch (e) {
-      /* 页面没响应就继续走直连 */
+  for (let i = 0; i < chain.length; i++) {
+    const step = chain[i];
+    if (step === 'page') {
+      const tabId = await findOpenPickcatTab();
+      if (tabId == null) {
+        lastErr = new Error('没开 Pickcat 页面（这个方式只读你已经打开的页面）');
+        continue;
+      }
+      try {
+        return await readFromTab(tabId, 'page');
+      } catch (e) {
+        lastErr = e;
+        continue;
+      }
+    }
+    if (step === 'direct') {
+      try {
+        return await readDirect();
+      } catch (e) {
+        lastErr = e;
+        continue;
+      }
+    }
+    if (step === 'window') {
+      try {
+        return await readByHelper();
+      } catch (e) {
+        lastErr = e;
+        continue;
+      }
     }
   }
 
-  const d = await directFetch(API_SUMMARY).catch(function () {
-    return { ok: false, status: 0 };
-  });
-  if (d.ok) {
-    const list = await directFetch(API_LIST).catch(function () { return { ok: false }; });
-    const items = (list.ok && list.data && (list.data.items || (list.data.data && list.data.data.items))) || [];
-    return { count: Number(d.data && d.data.unreadCount) || 0, items: items, via: 'direct' };
-  }
-
-  const byHelper = await readByHelper();
-  if (d.status && !byHelper.count) byHelper.hint = describeError(d.status);
-  return byHelper;
+  throw lastErr || new Error('读取失败');
 }
 
 /* ---------- 通知 ---------- */
@@ -571,6 +591,23 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       const next = Object.assign({}, cur, msg.patch || {});
       if (msg.patch && msg.patch.intervalMin != null) next.intervalMin = clampMin(msg.patch.intervalMin);
       if (msg.patch && msg.patch.notifyMax != null) next.notifyMax = Math.max(1, Math.min(5, Number(msg.patch.notifyMax) || 3));
+      if (msg.patch && Array.isArray(msg.patch.chain)) {
+        const all = ['page', 'direct', 'window'];
+        const picked = msg.patch.chain.filter(function (s) { return all.indexOf(s) >= 0; });
+        next.chain = picked;
+        if (picked.length === 3) {
+          next.mode = 'smart';
+        } else if (picked.length) {
+          next.mode = 'custom';
+        } else {
+          next.mode = 'smart';
+          next.chain = all;
+        }
+      }
+      if (msg.patch && msg.patch.mode && !Array.isArray(msg.patch.chain)) {
+        if (msg.patch.mode === 'smart') next.chain = ['page', 'direct', 'window'];
+        else if (msg.patch.mode !== 'custom') next.chain = [msg.patch.mode];
+      }
       await chrome.storage.local.set({ settings: next });
       try {
         await ensureAlarm();

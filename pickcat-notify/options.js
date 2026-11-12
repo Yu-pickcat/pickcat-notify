@@ -10,6 +10,7 @@ const MODE_DESC = {
 const VIA = { page: '已打开的页面', direct: '直连接口', window: '后台页面' };
 
 const MODE_NAME = { smart: '智能', page: '只读已开页面', direct: '只直连', window: '后台页兜底' };
+const MODE_SHORT = { page: '只读已开页面', direct: '只直连', window: '后台页' };
 
 const el = {
   ver: document.getElementById('ver'),
@@ -19,7 +20,7 @@ const el = {
   modeOther: document.getElementById('modeOther'),
   modeMask: document.getElementById('modeMask'),
   modeBack: document.getElementById('modeBack'),
-  modeCancel: document.getElementById('modeCancel'),
+  modeApply: document.getElementById('modeApply'),
   modeDesc: document.getElementById('modeDesc'),
   maxSeg: document.getElementById('maxSeg'),
   swNotify: document.getElementById('swNotify'),
@@ -78,11 +79,16 @@ function markSeg(node, val) {
 function renderSettings(s) {
   settings = s;
   markSeg(el.intervalSeg, s.intervalMin || 1);
-  markSeg(el.modeSeg, (s.mode || 'smart') === 'smart' ? 'smart' : '');
   const mode = s.mode || 'smart';
-  el.modeOther.textContent = mode === 'smart' ? '其他方式…' : MODE_NAME[mode] + ' · 改';
+  const chain = (Array.isArray(s.chain) && s.chain.length) ? s.chain : ['page', 'direct', 'window'];
+  markSeg(el.modeSeg, mode === 'smart' ? 'smart' : '');
+  el.modeOther.textContent = mode === 'smart'
+    ? '其他方式…'
+    : (mode === 'custom' ? '自定义：' + chain.map(function (k) { return MODE_SHORT[k] || k; }).join(' → ') + ' · 改' : MODE_NAME[mode] + ' · 改');
   markSeg(el.maxSeg, s.notifyMax || 3);
-  el.modeDesc.textContent = MODE_DESC[mode];
+  el.modeDesc.textContent = mode === 'custom'
+    ? '自定义顺序：' + chain.map(function (k, i) { return (i + 1) + '. ' + MODE_NAME[k]; }).join('　') + '；前一步没成就试下一步'
+    : MODE_DESC[mode];
   el.notifyDeps.classList.toggle('off', !s.notify);
   el.swNotify.classList.toggle('on', !!s.notify);
   el.swBadge.classList.toggle('on', !!s.badge);
@@ -104,10 +110,12 @@ function renderDiag(d) {
   const lines = [];
 
   if (alarm) {
-    lines.push(row('ok', '定时任务', '运行中 · 每 ' + stepText(alarm.period) + ' · 下次 ' + clock(alarm.when)));
-    if (alarm.want && Number(alarm.want) < Number(alarm.period)) {
-      lines.push(row('ok', '间隔补充', '你要的 ' + stepText(alarm.want) + ' 用计时器跑；浏览器闹钟最细 ' + stepText(alarm.period) + '，只当兜底'));
-    }
+    const want = Number(alarm.want) || Number(alarm.period);
+    const fast = want < Number(alarm.period);
+    const eff = fast ? want : Number(alarm.period);
+    lines.push(row('ok', '定时任务', '运行中 · 每 ' + stepText(eff)
+      + (fast ? '（计时器执行，闹钟 ' + stepText(alarm.period) + ' 兜底）' : '')
+      + ' · 下次 ' + clock(alarm.when)));
   } else {
     lines.push(row('bad', '定时任务', '没有注册（总开关可能关着）'));
   }
@@ -155,29 +163,55 @@ el.intervalSeg.addEventListener('click', function (e) {
   save({ intervalMin: Number(b.dataset.v) });
 });
 
-/* 检查方式：默认「智能」，其他三个收在弹窗里 */
+/* 检查方式：默认「智能」，其他方式收在弹窗里，可以勾几个、按勾的先后排顺序 */
 el.modeSeg.addEventListener('click', function (e) {
   const b = e.target.closest('button');
   if (!b || !b.dataset.v) return;
   save({ mode: b.dataset.v });
 });
 
-function openMask() { el.modeMask.classList.add('show'); }
+let pick = [];
+
+function renderPick() {
+  Array.prototype.forEach.call(el.modeMask.querySelectorAll('.pick'), function (b) {
+    const idx = pick.indexOf(b.dataset.v);
+    b.classList.toggle('on', idx >= 0);
+    const ord = b.querySelector('.ord');
+    if (ord) ord.textContent = idx >= 0 ? String(idx + 1) : '';
+  });
+  el.modeApply.textContent = pick.length === 3 ? '全勾了，就是智能' : (pick.length ? '用这套顺序' : '先勾一个');
+}
+
+function openMask() {
+  const s = settings || {};
+  const mode = s.mode || 'smart';
+  if (mode === 'custom' && Array.isArray(s.chain)) pick = s.chain.slice();
+  else if (mode === 'smart') pick = ['page', 'direct', 'window'];
+  else pick = [mode];
+  renderPick();
+  el.modeMask.classList.add('show');
+}
 function closeMask() { el.modeMask.classList.remove('show'); }
 
 el.modeOther.addEventListener('click', openMask);
-el.modeCancel.addEventListener('click', closeMask);
+el.modeMask.addEventListener('click', function (e) {
+  if (e.target === el.modeMask) { closeMask(); return; }
+  const b = e.target.closest('.pick');
+  if (!b) return;
+  const v = b.dataset.v;
+  const i = pick.indexOf(v);
+  if (i >= 0) pick.splice(i, 1); else pick.push(v);
+  renderPick();
+});
+el.modeApply.addEventListener('click', function () {
+  if (!pick.length) return;
+  const chain = pick.slice();
+  closeMask();
+  save({ chain: chain });
+});
 el.modeBack.addEventListener('click', function () {
   closeMask();
   save({ mode: 'smart' });
-});
-el.modeMask.addEventListener('click', function (e) {
-  if (e.target === el.modeMask) closeMask();
-  const b = e.target.closest('.opt');
-  if (b && b.dataset.v) {
-    closeMask();
-    save({ mode: b.dataset.v });
-  }
 });
 document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') closeMask();
@@ -259,7 +293,8 @@ el.closedTest.addEventListener('click', async function () {
   setTimeout(refreshDiag, 6000);
 });
 
-el.ver.textContent = 'v' + chrome.runtime.getManifest().version;
+const mf = chrome.runtime.getManifest();
+el.ver.textContent = mf.version_name || ('v' + mf.version);
 
 refreshDiag();
 setInterval(refreshDiag, 5000);

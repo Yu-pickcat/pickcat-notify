@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Pickcat 消息通知助手",
-  "version": "2.4.0",
+  "version": "2.4.1",
+  "version_name": "V2.4.1 beta",
   "description": "关掉 Pickcat 网页也能在后台检查未读消息，通知里写清是谁赞了你、回复了什么。",
   "permissions": ["alarms", "notifications", "storage"],
   "host_permissions": ["https://pickcat.dao3.fun/*"],
