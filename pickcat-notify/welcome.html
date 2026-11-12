@@ -2,32 +2,22 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pickcat 通知 · 开始使用</title>
 <link rel="stylesheet" href="ui.css">
 <style>
-  body { padding: 28px 24px 26px; }
+  body { padding: 30px 28px 26px; }
   .wrap { max-width: 660px; margin: 0 auto; }
 
   .hero { display: flex; align-items: flex-start; gap: 13px; }
   .hero img { width: 44px; height: 44px; border-radius: 11px; }
   h1 { margin: 0; font-size: 21px; font-weight: 650; letter-spacing: -.015em; }
   .lede { margin: 3px 0 0; color: var(--muted); font-size: 12.5px; }
-  .ver {
-    margin-left: auto;
-    padding: 2px 9px;
-    border: 1px solid var(--line);
-    border-radius: var(--r-chip);
-    color: var(--faint);
-    font-size: 11px;
-    white-space: nowrap;
-  }
 
-  .steps { margin-top: 18px; padding: 4px 18px; }
-  .step { display: flex; gap: 13px; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+  .steps { margin-top: 20px; padding: 4px 18px; }
+  .step { display: flex; gap: 13px; padding: 13px 0; border-bottom: 1px solid var(--line-soft); }
   .step:last-child { border-bottom: none; }
   .idx {
-    flex: none; width: 22px;
+    flex: none; width: 20px;
     color: var(--faint); font-size: 12px; font-weight: 600;
     font-variant-numeric: tabular-nums; padding-top: 1px;
   }
@@ -47,17 +37,7 @@
   .note-body { font-size: 12px; line-height: 1.9; color: var(--muted); }
   .note-body b { color: var(--ink); font-weight: 600; }
 
-  .list { margin: 0; padding-left: 16px; font-size: 12px; line-height: 1.9; color: var(--muted); }
-  .list li { margin-bottom: 2px; }
-  .list b { color: var(--ink); font-weight: 600; }
-
   .byline { margin-top: 16px; }
-
-  @media (max-width: 560px) {
-    body { padding: 22px 16px; }
-    .hero { flex-wrap: wrap; }
-    .ver { margin-left: 0; }
-  }
 </style>
 </head>
 <body>
@@ -68,7 +48,6 @@
       <h1>开始使用</h1>
       <p class="lede">关掉 Pickcat 网页后，它会在后台继续替你查新消息。</p>
     </div>
-    <div class="ver">v2.4.1</div>
   </div>
 
   <div class="card steps">
@@ -93,13 +72,6 @@
         <div class="step-d">后台每分钟查一次，有新消息弹通知，写清谁赞了你、回复了什么。</div>
       </div>
     </div>
-    <div class="step">
-      <div class="idx">04</div>
-      <div>
-        <div class="step-t">想让浏览器关窗后继续跑（可选）</div>
-        <div class="step-d">Chrome / Edge 设置里打开「关闭浏览器后继续运行后台应用」，连窗口关掉也能收。</div>
-      </div>
-    </div>
   </div>
 
   <div class="card status">
@@ -113,26 +85,11 @@
   </div>
 
   <div class="card note">
-    <div class="cap">v2.4.1 更新了什么</div>
-    <ul class="list">
-      <li><b>不再弹小窗、不再自己启动浏览器</b>：后台兜底只在你已打开的窗口里放一个不切换的标签页；浏览器没窗口时这一轮直接跳过。</li>
-      <li><b>点通知直达那条内容</b>：直接打开对应帖子，回复还会定位到那一层。</li>
-      <li><b>通知文案按站点真实类型</b>：赞、回复、@、关注、系统通知，不再笼统写「有新动态」。</li>
-      <li><b>可以选择只提醒哪些</b>：只看回复和 @，不被打扰于点赞。</li>
-      <li><b>同一条内容的多个赞合并</b>：变成「A、B 等 3 人赞了你的内容」。</li>
-      <li><b>弹窗每条动态都能点开</b>，并显示回复 / 赞 / @ 的分类数量。</li>
-      <li><b>全部标为已读</b>：只有你手动点才发这一个写请求，其余仍是只读。</li>
-    </ul>
-  </div>
-
-  <div class="card note">
     <div class="cap">能力边界</div>
     <div class="note-body">
       <b>关掉标签页：能收到。</b>检查由浏览器自己的定时任务驱动，与网页无关。<br>
-      <b>关掉浏览器窗口、进程仍在后台：能。</b>需要打开「关闭浏览器后继续运行后台应用」。<br>
-      <b>完全退出浏览器：不能。</b>进程结束，插件随之停止。<br>
-      <b>不会弹窗、不会自己启动浏览器。</b>兜底只借用你已打开的窗口，放一个不抢焦点的标签页；没窗口就跳过这一轮。<br>
-      <b>手机 / 平板：暂时不行。</b>手机浏览器不允许装扩展，设置页里写了完整的兼容性表。
+      <b>关掉浏览器窗口、进程仍在后台：能。</b>需要打开 Chrome 的「关闭浏览器后继续运行后台应用」。<br>
+      <b>完全退出浏览器：不能。</b>进程结束，插件随之停止。
     </div>
   </div>
 
