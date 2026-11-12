@@ -1,15 +1,14 @@
 /* 设置页：保存配置 + 后台体检 + 关页验证 */
 
 const MODE_DESC = {
-  smart: '智能：先直连接口；读不到时借你已打开的 Pickcat 页面读（不弹窗、不开新页面）',
+  smart: '智能：先直连接口，读不到再用后台页面',
   direct: '只直连接口：一个页面都不开，最省资源',
-  window: '只用后台页面：只借你已打开的 Pickcat 页面读（不弹窗、不开新页面）'
+  window: '只用后台页面：最稳，后台留一个 Pickcat 标签页'
 };
 
 const VIA = { direct: '直连接口', window: '后台页面' };
 
 const el = {
-  ver: document.getElementById('ver'),
   intervalSeg: document.getElementById('intervalSeg'),
   modeSeg: document.getElementById('modeSeg'),
   modeDesc: document.getElementById('modeDesc'),
@@ -18,11 +17,6 @@ const el = {
   swSound: document.getElementById('swSound'),
   swOpen: document.getElementById('swOpen'),
   swDnd: document.getElementById('swDnd'),
-  swReply: document.getElementById('swReply'),
-  swMention: document.getElementById('swMention'),
-  swLike: document.getElementById('swLike'),
-  swSystem: document.getElementById('swSystem'),
-  swGroup: document.getElementById('swGroup'),
   dndBox: document.getElementById('dndBox'),
   dndStart: document.getElementById('dndStart'),
   dndEnd: document.getElementById('dndEnd'),
@@ -32,8 +26,7 @@ const el = {
   openSite: document.getElementById('openSite'),
   openWelcome: document.getElementById('openWelcome'),
   closeHelper: document.getElementById('closeHelper'),
-  closedTest: document.getElementById('closedTest'),
-  readAll: document.getElementById('readAll')
+  closedTest: document.getElementById('closedTest')
 };
 
 let settings = null;
@@ -74,11 +67,6 @@ function renderSettings(s) {
   el.swSound.classList.toggle('on', !!s.sound);
   el.swOpen.classList.toggle('on', !!s.openNotify);
   el.swDnd.classList.toggle('on', !!s.dndEnabled);
-  el.swReply.classList.toggle('on', s.notifyReply !== false);
-  el.swMention.classList.toggle('on', s.notifyMention !== false);
-  el.swLike.classList.toggle('on', s.notifyLike !== false);
-  el.swSystem.classList.toggle('on', s.notifySystem !== false);
-  el.swGroup.classList.toggle('on', s.groupLikes !== false);
   el.dndBox.classList.toggle('show', !!s.dndEnabled);
   el.dndStart.value = s.dndStart || '22:30';
   el.dndEnd.value = s.dndEnd || '07:00';
@@ -88,8 +76,6 @@ function renderDiag(d) {
   const s = d.state || {};
   const alarm = d.alarm;
   const lines = [];
-
-  if (d.version) el.ver.textContent = 'v' + d.version;
 
   if (alarm) {
     lines.push(row('ok', '定时任务', '运行中 · 每 ' + Math.round(alarm.period) + ' 分钟 · 下次 ' + clock(alarm.when)));
@@ -108,12 +94,8 @@ function renderDiag(d) {
     lines.push(row('bad', '错误', s.error));
   }
 
-  if (d.canBadge === false) {
-    lines.push(row('bad', '图标角标', '当前浏览器没有 action/ browserAction 接口'));
-  }
-
   if (d.helperTab != null) {
-    lines.push(row('ok', '后台页面', '已就绪'));
+    lines.push(row('ok', '后台页面', '已就绪（标签页 ' + d.helperTab + '）'));
   } else if (d.helper != null) {
     lines.push(row('ok', '后台页面', '已就绪（窗口 ' + d.helper + '）'));
   }
@@ -148,12 +130,9 @@ el.modeSeg.addEventListener('click', function (e) {
   save({ mode: b.dataset.v });
 });
 
-[['swNotify', 'notify'], ['swBadge', 'badge'], ['swSound', 'sound'], ['swOpen', 'openNotify'],
- ['swReply', 'notifyReply'], ['swMention', 'notifyMention'], ['swLike', 'notifyLike'],
- ['swSystem', 'notifySystem'], ['swGroup', 'groupLikes']]
+[['swNotify', 'notify'], ['swBadge', 'badge'], ['swSound', 'sound'], ['swOpen', 'openNotify']]
   .forEach(function (pair) {
     const node = el[pair[0]];
-    if (!node) return;
     node.addEventListener('click', function () {
       const next = !node.classList.contains('on');
       node.classList.toggle('on', next);
@@ -188,16 +167,6 @@ el.openWelcome.addEventListener('click', function () { send({ type: 'PC_OPEN_WEL
 
 el.closeHelper.addEventListener('click', async function () {
   await send({ type: 'PC_CLOSE_HELPER' });
-  await refreshDiag();
-});
-
-el.readAll.addEventListener('click', async function () {
-  el.readAll.disabled = true;
-  el.readAll.textContent = '处理中…';
-  const resp = await send({ type: 'PC_MARK_READ' });
-  el.readAll.disabled = false;
-  el.readAll.textContent = resp.ok ? '已标为已读' : '失败：' + (resp.error || '未知原因');
-  setTimeout(function () { el.readAll.textContent = '全部标为已读'; }, 2400);
   await refreshDiag();
 });
 

@@ -2,25 +2,16 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pickcat 通知 · 设置</title>
 <link rel="stylesheet" href="ui.css">
 <style>
-  body { padding: 26px 20px 34px; }
-  .wrap { max-width: 640px; margin: 0 auto; }
+  body { padding: 28px 24px 32px; }
+  .wrap { max-width: 600px; margin: 0 auto; }
 
-  header { display: flex; align-items: center; gap: 11px; margin-bottom: 18px; }
+  header { display: flex; align-items: center; gap: 11px; margin-bottom: 20px; }
   header img { width: 30px; height: 30px; border-radius: 8px; }
   h1 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
   .sub { color: var(--faint); font-size: 11.5px; margin-top: 1px; }
-  .ver {
-    margin-left: auto;
-    padding: 2px 8px;
-    border: 1px solid var(--line);
-    border-radius: var(--r-chip);
-    color: var(--faint);
-    font-size: 11px;
-  }
 
   .card { padding: 16px 18px; margin-bottom: 12px; }
 
@@ -29,7 +20,6 @@
   .diag b { font-weight: 600; }
 
   .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-  .tail { gap: 14px; }
 
   .note { font-size: 12px; line-height: 1.85; color: var(--muted); }
   .note b { color: var(--ink); font-weight: 600; }
@@ -38,24 +28,6 @@
   .dnd.show { display: flex; }
 
   .foot { margin-top: 16px; }
-
-  .compat { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .compat th, .compat td { text-align: left; padding: 7px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
-  .compat th { color: var(--faint); font-weight: 600; font-size: 11px; letter-spacing: .04em; }
-  .compat td:last-child { color: var(--muted); }
-  .compat tr:last-child td { border-bottom: none; }
-  .ok { color: var(--ok); }
-  .no { color: var(--signal); }
-  .maybe { color: var(--muted); }
-
-  @media (min-width: 760px) {
-    .wrap { max-width: 720px; }
-    .card { padding: 18px 20px; }
-  }
-  @media (max-width: 420px) {
-    .row { flex-wrap: wrap; align-items: flex-start; gap: 8px; }
-    .seg { flex-wrap: wrap; }
-  }
 </style>
 </head>
 <body>
@@ -66,7 +38,6 @@
       <h1>设置</h1>
       <div class="sub">Pickcat 通知助手</div>
     </div>
-    <div class="ver" id="ver">v2.4.1</div>
   </header>
 
   <div class="card">
@@ -74,7 +45,7 @@
     <div class="row">
       <div>
         <div class="row-label">多久查一次</div>
-        <div class="row-desc">间隔越短越及时，也越费流量。最快 1 分钟</div>
+        <div class="row-desc">间隔越短越及时，也越费流量</div>
       </div>
       <div class="seg" id="intervalSeg">
         <button type="button" data-v="1">1 分钟</button>
@@ -100,16 +71,9 @@
     <div class="row">
       <div>
         <div class="row-label">桌面通知</div>
-        <div class="row-desc">弹系统通知，写清谁、做了什么、哪条内容</div>
+        <div class="row-desc">显示谁赞了你、回复了什么</div>
       </div>
       <div class="switch" id="swNotify"><div class="knob"></div></div>
-    </div>
-    <div class="row">
-      <div>
-        <div class="row-label">点通知直达那条内容</div>
-        <div class="row-desc">关掉后，点通知只打开消息中心</div>
-      </div>
-      <div class="switch" id="swOpen"><div class="knob"></div></div>
     </div>
     <div class="row">
       <div class="row-label">图标上显示未读数</div>
@@ -120,50 +84,15 @@
       <div class="switch" id="swSound"><div class="knob"></div></div>
     </div>
     <div class="row">
+      <div class="row-label">点通知打开消息中心</div>
+      <div class="switch" id="swOpen"><div class="knob"></div></div>
+    </div>
+    <div class="row">
       <div class="row-label">免打扰时段</div>
       <div class="switch" id="swDnd"><div class="knob"></div></div>
     </div>
     <div class="dnd" id="dndBox">
       <input type="time" id="dndStart"><span>到</span><input type="time" id="dndEnd"><span>不弹通知</span>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="sec-title">提醒哪些</div>
-    <div class="row">
-      <div>
-        <div class="row-label">回复</div>
-        <div class="row-desc">有人回复你的帖子 / 作品 / 评论</div>
-      </div>
-      <div class="switch" id="swReply"><div class="knob"></div></div>
-    </div>
-    <div class="row">
-      <div>
-        <div class="row-label">@ 我</div>
-        <div class="row-desc">帖子或评论里提到了你</div>
-      </div>
-      <div class="switch" id="swMention"><div class="knob"></div></div>
-    </div>
-    <div class="row">
-      <div>
-        <div class="row-label">赞</div>
-        <div class="row-desc">帖子、作品或评论被赞</div>
-      </div>
-      <div class="switch" id="swLike"><div class="knob"></div></div>
-    </div>
-    <div class="row">
-      <div>
-        <div class="row-label">关注与系统通知</div>
-        <div class="row-desc">新粉丝、社区管理、等级认证、申诉结果</div>
-      </div>
-      <div class="switch" id="swSystem"><div class="knob"></div></div>
-    </div>
-    <div class="row">
-      <div>
-        <div class="row-label">同一条内容的多个赞合并</div>
-        <div class="row-desc">合成「A、B 等 3 人赞了你的内容」，少刷屏</div>
-      </div>
-      <div class="switch" id="swGroup"><div class="knob"></div></div>
     </div>
   </div>
 
@@ -178,7 +107,6 @@
     </div>
     <div class="tail">
       <button class="mini" id="test">发一条测试通知</button>
-      <button class="mini" id="readAll">全部标为已读</button>
     </div>
   </div>
 
@@ -186,37 +114,11 @@
     <div class="sec-title">关掉网页还能收到吗</div>
     <div class="note">
       <b>关掉 Pickcat 标签页：能。</b>检查跑在浏览器自己的定时任务里，跟网页开没开无关。<br>
-      <b>关掉浏览器窗口、进程还在后台：能。</b>需要在浏览器设置里打开「关闭浏览器后继续运行后台应用」。<br>
+      <b>关掉浏览器窗口、进程还在后台：能。</b>要在 Chrome 设置里打开「关闭浏览器后继续运行后台应用」。<br>
       <b>完全退出浏览器：不能。</b>浏览器进程没了，插件也停。
     </div>
     <div class="btns">
       <button class="btn btn-ghost" id="closedTest">关掉所有 Pickcat 页面后测试</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="sec-title">兼容性</div>
-    <div class="note" style="margin-bottom:10px">这一版按桌面 Chromium 内核写成，接口全部做了回调 / Promise 双兼容。<b>建议直接用 Chrome 或 Edge</b>，不折腾 360、QQ 这类加壳浏览器。</div>
-    <table class="compat">
-      <tr><th>环境</th><th>能不能用</th></tr>
-      <tr><td>Windows · Chrome（推荐）/ Edge</td><td class="ok">支持（已真机实测）</td></tr>
-      <tr><td>macOS · Chrome / Edge</td><td class="ok">支持（同一套代码，没有平台专属接口）</td></tr>
-      <tr><td>Linux · Chrome / Edge</td><td class="ok">支持（同上）</td></tr>
-      <tr><td>其它 Chromium 内核（Brave / Vivaldi / Opera）</td><td class="maybe">一般可用，未逐个实测</td></tr>
-      <tr><td>华为浏览器</td><td class="no">不能装扩展（内核是 Chromium，但华为没开放扩展入口）</td></tr>
-      <tr><td>Firefox 桌面</td><td class="no">暂不支持（后台机制不同，需要单独适配）</td></tr>
-      <tr><td>手机 / 平板浏览器、鸿蒙 NEXT</td><td class="no">不能装扩展</td></tr>
-    </table>
-    <div class="note" style="margin-top:10px">手机端做不到，是浏览器不允许装扩展，不是这个插件偷懒；短期内没有可靠替代方案。</div>
-  </div>
-
-  <div class="card">
-    <div class="sec-title">排错</div>
-    <div class="note">
-      <b>未登录：</b>先在浏览器里登录 Pickcat，再点立即检查；仍不行再打开「允许在后台开一个页面兜底」。<br>
-      <b>没有通知：</b>检查 Windows 设置 → 系统 → 通知，允许 Chrome / Edge 弹出通知。<br>
-      <b>后台体检显示「没注册」：</b>弹窗顶部总开关被关掉了，打开即可。<br>
-      <b>一直网络不通：</b>检查网络或站点是否临时故障。
     </div>
   </div>
 
