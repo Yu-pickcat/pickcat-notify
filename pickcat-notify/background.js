@@ -1,11 +1,11 @@
-/* Pickcat 消息通知助手 v2.4.0
+/* Pickcat 消息通知助手 v2.4.1
    后台定时检查未读数，网页关掉后照样弹通知；点通知可直达那条帖子 / 作品。 */
 
 const BASE = 'https://pickcat.dao3.fun';
 const API_SUMMARY = '/api/v1/notification-summary';
 const API_LIST = '/api/v1/notifications';
 const ICON_PATH = 'icons/icon128.png';
-const VERSION = '2.4.0';
+const VERSION = '2.4.1';
 
 /* ============================================================
    兼容层
@@ -56,6 +56,7 @@ function tabSend(id, msg) { return call(EXT.tabs.sendMessage, EXT.tabs, [id, msg
 function tabUpdate(id, o) { return call(EXT.tabs.update, EXT.tabs, [id, o]); }
 function tabRemove(id) { return call(EXT.tabs.remove, EXT.tabs, [id]).catch(function () {}); }
 function winCreate(o) { return call(EXT.windows.create, EXT.windows, [o]); }
+function winGetAll(q) { return call(EXT.windows.getAll, EXT.windows, [q]); }
 function winUpdate(id, o) { return call(EXT.windows.update, EXT.windows, [id, o]).catch(function () {}); }
 function winRemove(id) { return call(EXT.windows.remove, EXT.windows, [id]).catch(function () {}); }
 function openOptions() {
@@ -241,25 +242,25 @@ async function getHelperTab() {
 }
 
 async function createHelperTab() {
-  let lastErr = '';
-  // 首选不抢焦点的后台标签页（不额外弹窗口，最不打扰）
+  /* 已经有一个 Pickcat 标签页就复用它，绝不多开 */
+  const exist = await getHelperTab();
+  if (exist != null) return exist;
+
+  /* 关键：只在你已经开着的普通窗口里，放一个不抢焦点的后台标签页。
+     从来不用 windows.create（那会弹出可见的小窗），也绝不在没有窗口时新建窗口
+     —— 否则等于帮用户把浏览器拉起来。 */
+  let win = null;
   try {
-    const tab = await tabCreate({ url: BASE + '/', active: false });
-    await pSet({ helperWindowId: null, helperTabId: tab && tab.id != null ? tab.id : null });
-    if (tab && tab.id != null) return tab.id;
-  } catch (e) {
-    lastErr = (e && e.message) || String(e);
-  }
-  // 兜底：独立小窗（不写屏幕外坐标，浏览器会拒绝）
-  try {
-    const win = await winCreate({ url: BASE + '/', type: 'popup', width: 380, height: 300, focused: false });
-    await pSet({ helperWindowId: win && win.id != null ? win.id : null, helperTabId: null });
-    if (win && win.tabs && win.tabs[0] && win.tabs[0].id != null) return win.tabs[0].id;
-    return null;
-  } catch (e) {
-    lastErr = lastErr + ' / ' + ((e && e.message) || String(e));
-  }
-  throw new Error('不能打开后台页面：' + lastErr);
+    const wins = await winGetAll({ windowTypes: ['normal'] });
+    const list = (wins || []).filter(function (w) { return w && w.id != null; });
+    win = list.find(function (w) { return w.focused; }) || list[0] || null;
+  } catch (e) { win = null; }
+  if (!win) throw new Error('浏览器没有打开的窗口，本轮跳过（不会自己开浏览器）');
+
+  const tab = await tabCreate({ url: BASE + '/', active: false, windowId: win.id });
+  await pSet({ helperWindowId: null, helperTabId: tab && tab.id != null ? tab.id : null });
+  if (tab && tab.id != null) return tab.id;
+  throw new Error('不能打开后台页面');
 }
 
 async function ensureHelperTab() {
