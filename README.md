@@ -28,9 +28,11 @@ Pickcat（pickcat.dao3.fun）社区消息通知助手 —— **网页关掉，�
 5. **Chromium 兼容层**：`browser` / `chrome` 双兜底，`manifest` 声明 `minimum_chrome_version: 88`
 6. **界面重做**：弹窗 336px 分类浏览，设置项全部收进设置页，引导页重写
 
+每一版改了什么、修了什么，见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 安装（只有 zip，没有 crx）
 
-1. 下载 `pickcat-notify.zip` 并解压
+1. 到右侧 **Releases** 下载 v2.4.0 的 `pickcat-notify.zip` 并解压（仓库文件列表里也有同一个 zip）
 2. 打开 `chrome://extensions/`（Edge 是 `edge://extensions/`），右上角开启「开发者模式」
 3. 点「加载已解压的扩展程序」，选中解压出的 `pickcat-notify` 文件夹
 4. 自动弹出引导页，登录 Pickcat 后点「立即检查」
@@ -67,11 +69,10 @@ Pickcat（pickcat.dao3.fun）社区消息通知助手 —— **网页关掉，�
 ## 目录
 
 ```
-pickcat-notify/        扩展源码（加载这个文件夹）
-宣传图/                宣传用图（封面、通知示意、界面截图）
-宣传文档.md            对外宣传文案
-发布步骤.md            自己在社区发帖的操作步骤
-pickcat-notify.zip     打包好的安装包
+pickcat-notify/        扩展源码（要加载的就是这个文件夹）
+宣传图/                介绍用图（封面、通知示意、界面截图）
+CHANGELOG.md           每一版改了什么、修了什么
+pickcat-notify.zip     打包好的安装包（下载解压即用）
 ```
 
 ## 声明
