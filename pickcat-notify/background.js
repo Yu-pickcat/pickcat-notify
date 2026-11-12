@@ -52,6 +52,7 @@ function pDel(keys) { return call(EXT.storage.local.remove, EXT.storage.local, [
 
 function tabsQuery(q) { return call(EXT.tabs.query, EXT.tabs, [q]); }
 function tabCreate(o) { return call(EXT.tabs.create, EXT.tabs, [o]); }
+function tabGet(id) { return call(EXT.tabs.get, EXT.tabs, [id]); }
 function tabSend(id, msg) { return call(EXT.tabs.sendMessage, EXT.tabs, [id, msg]); }
 function tabUpdate(id, o) { return call(EXT.tabs.update, EXT.tabs, [id, o]); }
 function tabRemove(id) { return call(EXT.tabs.remove, EXT.tabs, [id]).catch(function () {}); }
@@ -246,9 +247,9 @@ async function createHelperTab() {
   const exist = await getHelperTab();
   if (exist != null) return exist;
 
-  /* 关键：只在你已经开着的普通窗口里，放一个不抢焦点的后台标签页。
-     从来不用 windows.create（那会弹出可见的小窗），也绝不在没有窗口时新建窗口
-     —— 否则等于帮用户把浏览器拉起来。 */
+  /* 只用后台标签页，永不新建窗口：
+     放在你已经打开的窗口里，active:false —— 不切换、不抢焦点、不弹窗、任务栏也不会多东西。
+     浏览器一个窗口都没有就跳过，不帮用户拉起浏览器。 */
   let win = null;
   try {
     const wins = await winGetAll({ windowTypes: ['normal'] });
@@ -258,9 +259,9 @@ async function createHelperTab() {
   if (!win) throw new Error('浏览器没有打开的窗口，本轮跳过（不会自己开浏览器）');
 
   const tab = await tabCreate({ url: BASE + '/', active: false, windowId: win.id });
-  await pSet({ helperWindowId: null, helperTabId: tab && tab.id != null ? tab.id : null });
-  if (tab && tab.id != null) return tab.id;
-  throw new Error('不能打开后台页面');
+  if (!tab || tab.id == null) throw new Error('不能打开后台页面');
+  await pSet({ helperWindowId: null, helperTabId: tab.id });
+  return tab.id;
 }
 
 async function ensureHelperTab() {
