@@ -243,10 +243,22 @@ async function getHelperTab() {
 }
 
 async function createHelperTab() {
-  /* 这一版不再自己开任何页面、也不开任何窗口：
-     只在你自己已经开着的 Pickcat 页面里读。没有就跳过这一轮，什么都不建。
-     （浏览器规定跨站请求带不上登录 Cookie，所以必须借站内页面；页面只能由你自己开。） */
+  /* 这一版永远不自己开页面、不开窗口、不进标签栏：
+     只在你自己已经开着的 Pickcat 页面里读；一个都没有就跳过这一轮。
+     （2.3.1-beta 之所以「没看到页面」也收到消息，是因为它就靠 tabs.create 偷偷开页面读，只是你没注意。） */
   throw new Error('没有打开的 Pickcat 页面，本轮跳过（不会自己开页面、不会弹窗口）');
+}
+
+async function waitTabLoaded(tabId, timeout) {
+  const until = Date.now() + (timeout || 12000);
+  while (Date.now() < until) {
+    try {
+      const t = await tabGet(tabId);
+      if (t && t.status === 'complete') return true;
+    } catch (e) { return false; }
+    await sleep(600);
+  }
+  return false;
 }
 
 async function ensureHelperTab() {
