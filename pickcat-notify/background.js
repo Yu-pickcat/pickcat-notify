@@ -511,13 +511,13 @@ function topicLine(i) {
   return s;
 }
 
-/* 点开后直达对应帖子：优先主题 id 拼线程链接；带评论 id 时加 #post-<postId> 锚点定位到那条评论。
-   站点评论容器是内部滚动条，锚点由页面自己滚动；锚点评论若没被懒加载出来，就停在帖子顶部 */
+/* 点开后直达对应帖子：优先主题 id 拼线程链接；带楼号时加 #post-<楼号> 锚点。
+   站点自己的通知链接就是这个格式（消息中心里回复通知指向 /forum/post/<topicId>#post-<postNumber>），
+   页面加载后会自己滚动定位到那一楼，实测有效；评论 id 的 UUID 形式站点不识别，不要用它 */
 function linkFor(i) {
   const topic = (i && i.topicId) || '';
-  const post = (i && i.postId) || '';
-  if (topic) return BASE + '/forum/post/' + topic + (post ? '#post-' + post : '');
-  if (post) return BASE + '/forum/post/' + post;
+  const floor = Number(i && i.floor) || 0;
+  if (topic) return BASE + '/forum/post/' + topic + (floor > 0 ? '#post-' + floor : '');
   return BASE + '/notifications';
 }
 
@@ -849,7 +849,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   }
 
   if (msg.type === 'PC_OPEN_POST') {
-    openTab(linkFor({ topicId: msg.topicId, postId: msg.postId }));
+    openTab(linkFor({ topicId: msg.topicId, floor: msg.floor }));
     sendResponse({ ok: true });
     return false;
   }
