@@ -47,10 +47,24 @@ function itemRow(it) {
   ava.className = 'ava';
   if (it.avatar) {
     const img = document.createElement('img');
-    img.src = it.avatar;
     img.alt = '';
-    img.onerror = function () { ava.textContent = initial(it.actor); };
+    let settled = false;
+    const fallback = function () {
+      if (settled) return;
+      settled = true;
+      ava.textContent = initial(it.actor);
+    };
+    img.onerror = fallback;
     ava.appendChild(img);
+    /* 头像被站点 CORP 限制跨源直连，由后台抓成 data URL 再渲染 */
+    send({ type: 'PC_AVATAR', url: it.avatar }).then(function (r) {
+      if (settled) return;
+      if (r && r.data) {
+        img.src = r.data;
+      } else {
+        fallback();
+      }
+    }).catch(fallback);
   } else {
     ava.textContent = initial(it.actor);
   }

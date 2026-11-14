@@ -389,6 +389,37 @@ function parseTs(v) {
   return isNaN(n) ? 0 : n;
 }
 
+/* 头像响应头带 cross-origin-resource-policy: same-origin，扩展弹窗（chrome-extension:// 源）
+   直接 <img> 会被浏览器拦掉。这里由后台凭跨源权限把头像抓成 data URL 再给弹窗，
+   data URL 同源加载不受 CORP 限制。内存缓存避免重复抓取。 */
+const avatarCache = {};
+
+function readBlobAsDataUrl(blob) {
+  return new Promise(function (resolve) {
+    try {
+      const fr = new FileReader();
+      fr.onload = function () { resolve(fr.result || ''); };
+      fr.onerror = function () { resolve(''); };
+      fr.readAsDataURL(blob);
+    } catch (e) { resolve(''); }
+  });
+}
+
+async function avatarDataUrl(url) {
+  if (!url || !/^https?:\/\//i.test(url)) return '';
+  if (avatarCache[url]) return avatarCache[url];
+  try {
+    const res = await fetch(url, { credentials: 'include', cache: 'force-cache' });
+    if (!res.ok) return '';
+    const blob = await res.blob();
+    const data = await readBlobAsDataUrl(blob);
+    if (data) avatarCache[url] = data;
+    return data;
+  } catch (e) {
+    return '';
+  }
+}
+
 /* 把站点返回的一条通知，整理成「谁 + 干了什么 + 涉及什么内容」 */
 function normalizeItem(it) {
   if (!it || typeof it !== 'object') return null;
@@ -540,13 +571,16 @@ async function showNote(count, items, delta) {
   const c = await cfg();
   const text = noteText(count, items, delta, c.notifyMax);
 
-  /* 只有一条时，通知图标用发送者头像（站点头像匿名可访问）；多条或没头像就回退扩展图标 */
+  /* 只有一条时，通知图标用发送者头像；多条或没头像就回退扩展图标。
+     头像先抓成 data URL（避开站点 CORP 跨源限制），抓不到再退远程地址，最后回退扩展图标 */
   const list = arrangeItems(items);
   const unread = list.filter(function (i) { return !i.read; });
   const use = (unread.length ? unread : list).slice(0, Math.max(1, Number(c.notifyMax) || 3));
   let iconUrl = chrome.runtime.getURL(ICON_PATH);
-  if (use.length === 1 && use[0].avatar && /^https?:\/\//i.test(use[0].avatar)) {
-    iconUrl = use[0].avatar;
+  if (use.length === 1 && use[0].avatar) {
+    const data = await avatarDataUrl(use[0].avatar);
+    if (data) iconUrl = data;
+    else if (/^https?:\/\//i.test(use[0].avatar)) iconUrl = use[0].avatar;
   }
 
   await capNotifications();
@@ -819,6 +853,13 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       await sleep(1800);
       const r = await poll();
       sendResponse({ result: r, state: await st(), closed: closed });
+    })();
+    return true;
+  }
+
+  if (msg.type === 'PC_AVATAR') {
+    (async function () {
+      sendResponse({ data: await avatarDataUrl(String(msg.url || '')) });
     })();
     return true;
   }
