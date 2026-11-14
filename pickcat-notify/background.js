@@ -393,6 +393,9 @@ function parseTs(v) {
    直接 <img> 会被浏览器拦掉。这里由后台凭跨源权限把头像抓成 data URL 再给弹窗，
    data URL 同源加载不受 CORP 限制。内存缓存避免重复抓取。 */
 const avatarCache = {};
+/* 通知 id → 直达帖子链接；内存映射，后台重启后清空，未命中就回消息中心 */
+const noteLinks = {};
+let noteSeq = 0;
 
 function readBlobAsDataUrl(blob) {
   return new Promise(function (resolve) {
@@ -484,6 +487,16 @@ function topicLine(i) {
   else if (i.excerpt) s = i.excerpt;
   if (i.floor) s += ' · 第 ' + i.floor + ' 楼';
   return s;
+}
+
+/* 点开后直达对应帖子：优先主题 id 拼线程链接；带评论 id 时加 #post-<postId> 锚点定位到那条评论。
+   站点评论容器是内部滚动条，锚点由页面自己滚动；锚点评论若没被懒加载出来，就停在帖子顶部 */
+function linkFor(i) {
+  const topic = (i && i.topicId) || '';
+  const post = (i && i.postId) || '';
+  if (topic) return BASE + '/forum/post/' + topic + (post ? '#post-' + post : '');
+  if (post) return BASE + '/forum/post/' + post;
+  return BASE + '/notifications';
 }
 
 /* 通知文案：固定写成「谁 + 做了什么 + 涉及什么内容」，不说空话 */
@@ -584,7 +597,11 @@ async function showNote(count, items, delta) {
   }
 
   await capNotifications();
-  chrome.notifications.create('pickcat-' + Date.now(), {
+  const nid = 'pickcat-' + Date.now() + '-' + (++noteSeq);
+  delete noteLinks[nid];
+  /* 单条通知记住直达链接；多条没有唯一目标，点开回消息中心 */
+  if (use.length === 1) noteLinks[nid] = linkFor(use[0]);
+  chrome.notifications.create(nid, {
     type: 'basic',
     iconUrl: iconUrl,
     title: text.title,
@@ -715,8 +732,10 @@ chrome.notifications.onClicked.addListener(async function (id) {
     chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
     return;
   }
-  /* 点通知固定直达消息中心 */
-  chrome.tabs.create({ url: BASE + '/notifications' });
+  /* 单条通知直达对应帖子；多条或没记到链接时回消息中心 */
+  const url = noteLinks[id] || BASE + '/notifications';
+  delete noteLinks[id];
+  chrome.tabs.create({ url: url });
 });
 
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
@@ -803,6 +822,12 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
 
   if (msg.type === 'PC_OPEN') {
     chrome.tabs.create({ url: BASE + '/' });
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (msg.type === 'PC_OPEN_POST') {
+    chrome.tabs.create({ url: linkFor({ topicId: msg.topicId, postId: msg.postId }) });
     sendResponse({ ok: true });
     return false;
   }

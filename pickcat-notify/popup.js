@@ -43,6 +43,15 @@ function itemRow(it) {
   const row = document.createElement('div');
   row.className = 'feed-item';
 
+  /* 有帖子标识的动态，整行可点，直达对应帖子 */
+  if (it.topicId || it.postId) {
+    row.title = '查看帖子';
+    row.style.cursor = 'pointer';
+    row.addEventListener('click', function () {
+      send({ type: 'PC_OPEN_POST', topicId: it.topicId, postId: it.postId });
+    });
+  }
+
   const ava = document.createElement('div');
   ava.className = 'ava';
   if (it.avatar) {
