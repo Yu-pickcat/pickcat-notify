@@ -53,6 +53,17 @@ function sleep(ms) {
   return new Promise(function (r) { setTimeout(r, ms); });
 }
 
+/* 后台 Service Worker 开标签页：浏览器刚启动、窗口刚被关掉，或闹钟唤醒 SW 的瞬间，
+   当前窗口可能还没就绪，tabs.create 会 reject「No current window」。
+   这里延迟重试一次；仍失败就静默放弃，不让未捕获错误出现在扩展错误页 */
+function openTab(url) {
+  chrome.tabs.create({ url: url }).catch(function () {
+    sleep(800).then(function () {
+      return chrome.tabs.create({ url: url });
+    }).catch(function () { /* 窗口仍未就绪，放弃 */ });
+  });
+}
+
 function clampMin(v) {
   var n = Number(v) || 1;
   if (n < 0.5) n = 0.5;
@@ -172,33 +183,44 @@ async function createHiddenPage() {
   /* 先清掉上一次没响应的兜底页，避免隐藏窗口/标签堆积占内存 */
   await closeHelper();
   let lastErr = '';
-  try {
-    const win = await chrome.windows.create({ url: BASE + '/', type: 'popup', width: 420, height: 320, focused: false });
-    if (win && win.tabs && win.tabs[0] && win.tabs[0].id != null) {
-      const tabId = win.tabs[0].id;
-      await chrome.storage.local.set({ helperWindowId: win.id != null ? win.id : null, helperTabId: tabId });
-      await waitTabLoaded(tabId, 12000);
-      /* 页面加载期间浏览器会把最小化还原，加载完再收起来，连压三次防它回弹 */
-      for (let i = 0; i < 3; i++) {
-        if (win.id != null) {
-          try { await chrome.windows.update(win.id, { state: 'minimized', focused: false }); } catch (e) { /* 忽略 */ }
-        }
-        await sleep(600);
-      }
-      return tabId;
+  let win = null;
+  /* 窗口刚启动时可能抢不到当前窗口，小窗创建失败就等一下重试一次 */
+  for (let attempt = 0; attempt < 2 && !win; attempt++) {
+    try {
+      win = await chrome.windows.create({ url: BASE + '/', type: 'popup', width: 420, height: 320, focused: false });
+    } catch (e) {
+      lastErr = (e && e.message) || String(e);
+      if (attempt === 0) await sleep(1000);
     }
-    lastErr = '窗口没建出来';
-  } catch (e) {
-    lastErr = (e && e.message) || String(e);
   }
-  /* 老浏览器建不出独立小窗时，退一步用不抢焦点的后台标签页 */
-  try {
-    const tab = await chrome.tabs.create({ url: BASE + '/', active: false });
+  if (win && win.tabs && win.tabs[0] && win.tabs[0].id != null) {
+    const tabId = win.tabs[0].id;
+    await chrome.storage.local.set({ helperWindowId: win.id != null ? win.id : null, helperTabId: tabId });
+    await waitTabLoaded(tabId, 12000);
+    /* 页面加载期间浏览器会把最小化还原，加载完再收起来，连压三次防它回弹 */
+    for (let i = 0; i < 3; i++) {
+      if (win.id != null) {
+        try { await chrome.windows.update(win.id, { state: 'minimized', focused: false }); } catch (e) { /* 忽略 */ }
+      }
+      await sleep(600);
+    }
+    return tabId;
+  }
+  if (!lastErr) lastErr = '窗口没建出来';
+  /* 老浏览器建不出独立小窗时，退一步用不抢焦点的后台标签页；同样重试一次 */
+  let tab = null;
+  for (let attempt = 0; attempt < 2 && !tab; attempt++) {
+    try {
+      tab = await chrome.tabs.create({ url: BASE + '/', active: false });
+    } catch (e2) {
+      lastErr = lastErr + ' / ' + ((e2 && e2.message) || String(e2));
+      if (attempt === 0) await sleep(1000);
+    }
+  }
+  if (tab) {
     await chrome.storage.local.set({ helperWindowId: null, helperTabId: tab.id });
     await waitTabLoaded(tab.id, 12000);
     return tab.id;
-  } catch (e2) {
-    lastErr = lastErr + ' / ' + ((e2 && e2.message) || String(e2));
   }
   throw new Error('打不开后台页面：' + lastErr);
 }
@@ -709,7 +731,7 @@ chrome.runtime.onInstalled.addListener(async function (details) {
         focused: true
       });
     } catch (e) {
-      chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
+      openTab(chrome.runtime.getURL('welcome.html'));
     }
     chrome.notifications.create('pickcat-welcome-once', {
       type: 'basic',
@@ -729,13 +751,13 @@ chrome.runtime.onStartup.addListener(async function () {
 
 chrome.notifications.onClicked.addListener(async function (id) {
   if (id === 'pickcat-welcome-once') {
-    chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
+    openTab(chrome.runtime.getURL('welcome.html'));
     return;
   }
   /* 单条通知直达对应帖子；多条或没记到链接时回消息中心 */
   const url = noteLinks[id] || BASE + '/notifications';
   delete noteLinks[id];
-  chrome.tabs.create({ url: url });
+  openTab(url);
 });
 
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
@@ -821,13 +843,13 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   }
 
   if (msg.type === 'PC_OPEN') {
-    chrome.tabs.create({ url: BASE + '/' });
+    openTab(BASE + '/');
     sendResponse({ ok: true });
     return false;
   }
 
   if (msg.type === 'PC_OPEN_POST') {
-    chrome.tabs.create({ url: linkFor({ topicId: msg.topicId, postId: msg.postId }) });
+    openTab(linkFor({ topicId: msg.topicId, postId: msg.postId }));
     sendResponse({ ok: true });
     return false;
   }
@@ -839,7 +861,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   }
 
   if (msg.type === 'PC_OPEN_WELCOME') {
-    chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
+    openTab(chrome.runtime.getURL('welcome.html'));
     sendResponse({ ok: true });
     return false;
   }
