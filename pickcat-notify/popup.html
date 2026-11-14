@@ -49,8 +49,15 @@
   }
   .ava img { width: 100%; height: 100%; object-fit: cover; }
   .item-main { min-width: 0; flex: 1; }
-  .item-t { font-size: 12px; line-height: 1.45; color: var(--ink-2); }
+  .item-t { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; font-size: 12px; line-height: 1.45; color: var(--ink-2); }
   .item-t b { color: var(--ink); font-weight: 600; }
+  .item-t .cat {
+    flex: none; padding: 1px 6px;
+    border: 1px solid var(--line); border-radius: var(--r-chip);
+    background: var(--bg); color: var(--muted);
+    font-size: 10px; line-height: 1.5;
+  }
+  .item-meta { margin-top: 1px; font-size: 10.5px; color: var(--faint); }
   .item-d {
     font-size: 11px; color: var(--faint); line-height: 1.4;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -87,7 +94,7 @@
     <img src="icons/icon32.png" alt="">
     <div>
       <div class="brand-name">Pickcat 通知</div>
-      <div class="brand-sub">关掉网页也能收到 · <span id="ver">V2.4.2 beta</span></div>
+      <div class="brand-sub">关掉网页也能收到 · <span id="ver">V2.4.3 beta</span></div>
     </div>
     <div class="switch on push" id="sw"><div class="knob"></div></div>
   </header>

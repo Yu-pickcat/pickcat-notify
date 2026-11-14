@@ -366,28 +366,75 @@ function flat(text, max) {
   return String(text == null ? '' : text).replace(/\s+/g, ' ').trim().slice(0, max || 60);
 }
 
+/* 头像地址：站点给的是相对路径（/api/v1/avatars/...），这里拼成完整地址；
+   兼容头像字段直接是字符串，或嵌套成 { url } 对象这两种形态 */
+function resolveAvatar(raw) {
+  if (!raw) return '';
+  if (typeof raw === 'object') {
+    raw = raw.url || raw.src || raw.path || raw.link || '';
+  }
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.indexOf('//') === 0) return 'https:' + s;
+  if (s.charAt(0) === '/') return BASE + s;
+  return BASE + '/' + s;
+}
+
+/* 时间：站点给的是 ISO 字符串（2026-11-14T06:29:24.132Z），转成时间戳 */
+function parseTs(v) {
+  if (!v) return 0;
+  if (typeof v === 'number') return v;
+  const n = Date.parse(String(v));
+  return isNaN(n) ? 0 : n;
+}
+
 /* 把站点返回的一条通知，整理成「谁 + 干了什么 + 涉及什么内容」 */
 function normalizeItem(it) {
   if (!it || typeof it !== 'object') return null;
   const d = it.details || {};
-  const actorObj = d.actor || d.user || {};
-  const actor = firstOf(actorObj, ['nickname', 'username', 'displayName', 'name']);
-  const avatar = firstOf(actorObj, ['avatarUrl', 'avatar', 'avatar_url', 'avatarPath']);
-  let avatarUrl = String(avatar || '');
-  if (!avatarUrl && actorObj.avatar && typeof actorObj.avatar === 'object') {
-    avatarUrl = String(actorObj.avatar.url || '');
-  }
+  const actorObj = d.actor || d.user || d.from || d.sender || {};
+  const actor = firstOf(actorObj, ['username', 'nickname', 'displayName', 'name']);
+
+  let avatarRaw = actorObj.avatar;
+  if (!avatarRaw) avatarRaw = firstOf(actorObj, ['avatarUrl', 'avatar_url', 'avatarPath', 'src']);
+  const avatar = resolveAvatar(avatarRaw);
+
+  const topicObj = d.topic || {};
+  const postObj = d.post || {};
+  const commentObj = d.comment || {};
+
+  let excerpt = firstOf(d, ['excerpt', 'content', 'title', 'text', 'body']);
+  if (!excerpt && commentObj) excerpt = firstOf(commentObj, ['excerpt', 'content', 'body']);
+  if (!excerpt && topicObj) excerpt = firstOf(topicObj, ['title', 'excerpt', 'content']);
+  if (!excerpt && postObj) excerpt = firstOf(postObj, ['title', 'excerpt', 'content']);
+
+  const topicTitle = flat(firstOf(topicObj, ['title']), 60);
+  const floor = Number(postObj.postNumber) || 0;
+  const postId = postObj.id || '';
+  const topicId = topicObj.id || '';
+  const actorId = actorObj.id || '';
+
   const action = TYPE_ACTION[it.type] || '有新消息';
-  let excerpt = firstOf(d, ['excerpt', 'content', 'title', 'text']);
-  if (!excerpt && d.comment) excerpt = firstOf(d.comment, ['excerpt', 'content', 'body']);
-  if (!excerpt && d.post) excerpt = firstOf(d.post, ['title', 'excerpt', 'content']);
-  if (!excerpt && d.topic) excerpt = firstOf(d.topic, ['title']);
-  if (!excerpt && d.work) excerpt = firstOf(d.work, ['workName', 'title', 'name']);
-  if (!excerpt && d.body) excerpt = firstOf(d.body, ['title', 'excerpt']);
+  const category = categoryOf(it.type);
   const isRead = !(it.readAt === null || typeof it.readAt === 'undefined');
-  const ts = Number(firstOf(it, ['createdAt', 'created_at', 'time']) ) || 0;
-  return { type: it.type || '', actor: flat(actor, 24), avatar: avatarUrl,
-           action: action, excerpt: flat(excerpt, 60), read: isRead, ts: ts };
+  const ts = parseTs(firstOf(it, ['createdAt', 'created_at', 'time']));
+
+  return {
+    type: it.type || '',
+    category: category,
+    actor: flat(actor, 24),
+    actorId: actorId,
+    avatar: avatar,
+    action: action,
+    excerpt: flat(excerpt, 60),
+    topicTitle: topicTitle,
+    floor: floor,
+    postId: postId,
+    topicId: topicId,
+    read: isRead,
+    ts: ts
+  };
 }
 
 function arrangeItems(items) {
@@ -398,6 +445,14 @@ function arrangeItems(items) {
   unread.sort(function (a, b) { return b.ts - a.ts; });
   read.sort(function (a, b) { return b.ts - a.ts; });
   return unread.concat(read);
+}
+
+function topicLine(i) {
+  let s = '';
+  if (i.topicTitle) s = '《' + i.topicTitle + '》';
+  else if (i.excerpt) s = i.excerpt;
+  if (i.floor) s += ' · 第 ' + i.floor + ' 楼';
+  return s;
 }
 
 /* 通知文案：固定写成「谁 + 做了什么 + 涉及什么内容」，不说空话 */
@@ -414,24 +469,40 @@ function noteText(count, items, delta, max) {
     const one = use[0];
     const who = one.actor || '有人';
     const title = who + ' ' + one.action;
-    const message = one.excerpt
-      ? '内容：' + one.excerpt
+    const topic = topicLine(one);
+    const message = topic
+      ? topic
       : (count > 1 ? '你现在有 ' + count + ' 条未读，点开消息中心看详情' : '点开消息中心看详情');
     return { title: title, message: message };
   }
 
   let message = use.map(function (i) {
-    return '· ' + (i.actor || '有人') + ' ' + i.action + (i.excerpt ? '：' + i.excerpt : '');
+    const who = i.actor || '有人';
+    const topic = topicLine(i);
+    return '· ' + who + ' ' + i.action + (topic ? '：' + topic : '');
   }).join('\n');
   if (count > use.length) message += '\n· 还有 ' + (count - use.length) + ' 条';
 
   return { title: 'Pickcat · ' + count + ' 条新消息', message: message };
 }
 
-/* 弹窗里显示的最近三条 */
-function recentFor(items) {
-  return arrangeItems(items).slice(0, 3).map(function (i) {
-    return { actor: i.actor, avatar: i.avatar, action: i.action, excerpt: i.excerpt };
+/* 弹窗里显示的最近动态，条数跟随「通知里最多列几条」设置（1～5） */
+function recentFor(items, max) {
+  const n = Math.max(1, Math.min(5, Number(max) || 3));
+  return arrangeItems(items).slice(0, n).map(function (i) {
+    return {
+      actor: i.actor,
+      actorId: i.actorId,
+      avatar: i.avatar,
+      action: i.action,
+      category: i.category,
+      excerpt: i.excerpt,
+      topicTitle: i.topicTitle,
+      floor: i.floor,
+      ts: i.ts,
+      postId: i.postId,
+      topicId: i.topicId
+    };
   });
 }
 
@@ -469,10 +540,19 @@ async function showNote(count, items, delta) {
   const c = await cfg();
   const text = noteText(count, items, delta, c.notifyMax);
 
+  /* 只有一条时，通知图标用发送者头像（站点头像匿名可访问）；多条或没头像就回退扩展图标 */
+  const list = arrangeItems(items);
+  const unread = list.filter(function (i) { return !i.read; });
+  const use = (unread.length ? unread : list).slice(0, Math.max(1, Number(c.notifyMax) || 3));
+  let iconUrl = chrome.runtime.getURL(ICON_PATH);
+  if (use.length === 1 && use[0].avatar && /^https?:\/\//i.test(use[0].avatar)) {
+    iconUrl = use[0].avatar;
+  }
+
   await capNotifications();
   chrome.notifications.create('pickcat-' + Date.now(), {
     type: 'basic',
-    iconUrl: chrome.runtime.getURL(ICON_PATH),
+    iconUrl: iconUrl,
     title: text.title,
     message: text.message,
     contextMessage: 'Pickcat 通知助手',
@@ -527,7 +607,7 @@ async function poll() {
         via: res.via,
         error: '',
         loggedOut: false,
-        recent: recentFor(res.items)
+        recent: recentFor(res.items, c.notifyMax)
       });
 
       await updateBadge(res.count, c);

@@ -37,6 +37,8 @@ function initial(name) {
   return s ? s.slice(0, 1).toUpperCase() : '·';
 }
 
+const CAT_NAME = { mention: '@我', reply: '回复', like: '赞', system: '系统' };
+
 function itemRow(it) {
   const row = document.createElement('div');
   row.className = 'feed-item';
@@ -66,14 +68,31 @@ function itemRow(it) {
   } else {
     t.textContent = it.action || '有新动态';
   }
+  if (it.category && CAT_NAME[it.category]) {
+    const tag = document.createElement('span');
+    tag.className = 'cat';
+    tag.textContent = CAT_NAME[it.category];
+    t.appendChild(tag);
+  }
 
   main.appendChild(t);
 
-  if (it.excerpt) {
+  const topic = it.topicTitle || it.excerpt;
+  if (topic) {
     const d = document.createElement('div');
     d.className = 'item-d';
-    d.textContent = it.excerpt;
+    d.textContent = topic;
     main.appendChild(d);
+  }
+
+  const metaBits = [];
+  if (it.floor) metaBits.push('第 ' + it.floor + ' 楼');
+  if (it.ts) metaBits.push(clock(it.ts));
+  if (metaBits.length) {
+    const m = document.createElement('div');
+    m.className = 'item-meta';
+    m.textContent = metaBits.join(' · ');
+    main.appendChild(m);
   }
 
   row.appendChild(ava);
@@ -120,7 +139,7 @@ function render(payload) {
     ? (state.loggedOut ? '先在浏览器里登录 Pickcat，再点立即检查' : state.error)
     : '';
 
-  const recent = Array.isArray(state.recent) ? state.recent.slice(0, 3) : [];
+  const recent = Array.isArray(state.recent) ? state.recent : [];
   el.list.innerHTML = '';
   if (!recent.length) {
     const empty = document.createElement('div');
