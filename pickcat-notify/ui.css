@@ -410,6 +410,8 @@ input[type="time"]:focus { border-color: #b9bec8; }
 }
 
 .byline b { color: var(--muted); font-weight: 600; }
+.byline a.repo { color: var(--muted); text-decoration: none; }
+.byline a.repo:hover { text-decoration: underline; }
 
 /* ---------- 跟随系统深浅色 ---------- */
 
