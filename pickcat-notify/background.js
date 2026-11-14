@@ -142,6 +142,19 @@ async function findOpenPickcatTab() {
   return live[0].id;
 }
 
+/* 关掉兜底后台页（窗口 + 标签），清掉记录；找不到也不报错。
+   兜底页重建前先调它，避免旧的没响应的隐藏窗口/标签一直堆积 */
+async function closeHelper() {
+  const got = await chrome.storage.local.get(['helperWindowId', 'helperTabId']);
+  if (got.helperWindowId != null) {
+    try { await chrome.windows.remove(got.helperWindowId); } catch (e) { /* 已关闭 */ }
+  }
+  if (got.helperTabId != null) {
+    try { await chrome.tabs.remove(got.helperTabId); } catch (e) { /* 已关闭 */ }
+  }
+  await chrome.storage.local.set({ helperWindowId: null, helperTabId: null });
+}
+
 async function waitTabLoaded(tabId, timeout) {
   const until = Date.now() + (timeout || 12000);
   while (Date.now() < until) {
@@ -156,6 +169,8 @@ async function waitTabLoaded(tabId, timeout) {
 
 /* 直连也读不到时才用的兜底：开一个最小化的独立小窗（不进标签栏、不抢焦点），之后一直复用 */
 async function createHiddenPage() {
+  /* 先清掉上一次没响应的兜底页，避免隐藏窗口/标签堆积占内存 */
+  await closeHelper();
   let lastErr = '';
   try {
     const win = await chrome.windows.create({ url: BASE + '/', type: 'popup', width: 420, height: 320, focused: false });
@@ -175,6 +190,15 @@ async function createHiddenPage() {
     lastErr = '窗口没建出来';
   } catch (e) {
     lastErr = (e && e.message) || String(e);
+  }
+  /* 老浏览器建不出独立小窗时，退一步用不抢焦点的后台标签页 */
+  try {
+    const tab = await chrome.tabs.create({ url: BASE + '/', active: false });
+    await chrome.storage.local.set({ helperWindowId: null, helperTabId: tab.id });
+    await waitTabLoaded(tab.id, 12000);
+    return tab.id;
+  } catch (e2) {
+    lastErr = lastErr + ' / ' + ((e2 && e2.message) || String(e2));
   }
   throw new Error('打不开后台页面：' + lastErr);
 }
@@ -205,6 +229,8 @@ async function readByHelper() {
   if (tabId == null) tabId = await createHiddenPage();
   let resp = await sendToTab(tabId, { type: 'PC_READ_UNREAD' });
   if (!resp) {
+    /* 旧兜底页没响应：先关掉它再重建，不叠第二个隐藏页 */
+    await closeHelper();
     tabId = await createHiddenPage();
     resp = await sendToTab(tabId, { type: 'PC_READ_UNREAD' });
   }
@@ -427,10 +453,23 @@ function inDnd(c) {
   return cur >= a || cur < b;
 }
 
+/* 通知数量封顶：老浏览器里通知堆多了也占资源，只留最近 5 条 */
+async function capNotifications() {
+  try {
+    const all = await chrome.notifications.getAll();
+    const ids = Object.keys(all || {}).filter(function (id) { return id.indexOf('pickcat-') === 0; });
+    while (ids.length > 5) {
+      const old = ids.shift();
+      try { await chrome.notifications.clear(old); } catch (e) { /* 忽略 */ }
+    }
+  } catch (e) { /* 不支持 getAll 时忽略 */ }
+}
+
 async function showNote(count, items, delta) {
   const c = await cfg();
   const text = noteText(count, items, delta, c.notifyMax);
 
+  await capNotifications();
   chrome.notifications.create('pickcat-' + Date.now(), {
     type: 'basic',
     iconUrl: chrome.runtime.getURL(ICON_PATH),
@@ -461,45 +500,54 @@ async function updateBadge(count, c) {
 
 /* ---------- 主流程 ---------- */
 
+/* 并发锁：闹钟、计时器、手动检查可能撞在一起，上一轮还没读完就跳过，避免叠加兜底页 */
+let pollRunning = false;
+
 async function poll() {
-  const c = await cfg();
-
-  if (!c.enabled) {
-    await chrome.action.setBadgeText({ text: '' });
-    await chrome.action.setIcon({ path: ICONS_IDLE }).catch(function () {});
-    return { skipped: true };
-  }
-
+  if (pollRunning) return { skipped: true, reason: 'already running' };
+  pollRunning = true;
   try {
-    const res = await readUnread();
-    const prev = await st();
-    const prevCount = Number(prev.lastCount) || 0;
+    const c = await cfg();
 
-    await saveSt({
-      unread: res.count,
-      lastCount: res.count,
-      lastCheck: Date.now(),
-      via: res.via,
-      error: '',
-      loggedOut: false,
-      recent: recentFor(res.items)
-    });
-
-    await updateBadge(res.count, c);
-
-    if (c.notify && res.count > 0 && res.count > prevCount && !inDnd(c)) {
-      const picked = filterByTypes(res.items, c.notifyTypes);
-      if (picked.length) await showNote(res.count, picked, res.count - prevCount);
+    if (!c.enabled) {
+      await chrome.action.setBadgeText({ text: '' });
+      await chrome.action.setIcon({ path: ICONS_IDLE }).catch(function () {});
+      return { skipped: true };
     }
-    return { ok: true, count: res.count, via: res.via };
-  } catch (e) {
-    const msg = String((e && e.message) || e);
-    await saveSt({
-      lastCheck: Date.now(),
-      error: msg,
-      loggedOut: /未登录/.test(msg)
-    });
-    return { ok: false, error: msg };
+
+    try {
+      const res = await readUnread();
+      const prev = await st();
+      const prevCount = Number(prev.lastCount) || 0;
+
+      await saveSt({
+        unread: res.count,
+        lastCount: res.count,
+        lastCheck: Date.now(),
+        via: res.via,
+        error: '',
+        loggedOut: false,
+        recent: recentFor(res.items)
+      });
+
+      await updateBadge(res.count, c);
+
+      if (c.notify && res.count > 0 && res.count > prevCount && !inDnd(c)) {
+        const picked = filterByTypes(res.items, c.notifyTypes);
+        if (picked.length) await showNote(res.count, picked, res.count - prevCount);
+      }
+      return { ok: true, count: res.count, via: res.via };
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      await saveSt({
+        lastCheck: Date.now(),
+        error: msg,
+        loggedOut: /未登录/.test(msg)
+      });
+      return { ok: false, error: msg };
+    }
+  } finally {
+    pollRunning = false;
   }
 }
 
@@ -659,14 +707,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
 
   if (msg.type === 'PC_CLOSE_HELPER') {
     (async function () {
-      const got = await chrome.storage.local.get(['helperWindowId', 'helperTabId']);
-      if (got.helperWindowId != null) {
-        try { await chrome.windows.remove(got.helperWindowId); } catch (e) { /* 已关闭 */ }
-      }
-      if (got.helperTabId != null) {
-        try { await chrome.tabs.remove(got.helperTabId); } catch (e) { /* 已关闭 */ }
-      }
-      await chrome.storage.local.set({ helperWindowId: null, helperTabId: null });
+      await closeHelper();
       sendResponse({ ok: true });
     })();
     return true;
