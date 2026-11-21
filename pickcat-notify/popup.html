@@ -3,8 +3,16 @@
 <head>
 <meta charset="utf-8">
 <link rel="stylesheet" href="ui.css">
+<script>
+  /* 弹窗宽度跟着屏幕走：大屏不挤成一条窄条，小屏仍保持 336 */
+  (function () {
+    var w = (window.screen && (window.screen.availWidth || window.screen.width)) || 1440;
+    var pw = w >= 2560 ? 460 : (w >= 1920 ? 408 : (w >= 1600 ? 372 : 336));
+    document.documentElement.style.setProperty('--pw', pw + 'px');
+  })();
+</script>
 <style>
-  body { width: 336px; }
+  body { width: var(--pw, 336px); }
   .wrap { padding: 14px 16px 12px; }
 
   header { display: flex; align-items: center; gap: 9px; }

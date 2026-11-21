@@ -3,7 +3,7 @@
 const BASE = 'https://pickcat.dao3.fun';
 const API_SUMMARY = BASE + '/api/v1/notification-summary';
 const API_LIST = BASE + '/api/v1/notifications?limit=5';
-const ICON_PATH = 'icons/icon128.png';
+const ICON_PATH = 'icons/hot128.png';
 
 const DEFAULTS = {
   enabled: true,
@@ -13,7 +13,7 @@ const DEFAULTS = {
   notify: true,
   notifyTypes: { mention: true, reply: true, like: true, system: true },
   notifyMax: 3,
-  badge: true,
+  badge: false,
   sound: true,
   dndEnabled: false,
   dndStart: '22:30',
@@ -27,7 +27,8 @@ const EMPTY_STATE = {
   via: '',
   error: '',
   loggedOut: false,
-  recent: []
+  recent: [],
+  readSeen: []
 };
 
 /* ---------- 版本与更新（参考 PICKCAT Plus 的「关于页检查更新」） ----------
@@ -769,10 +770,18 @@ function noteText(count, items, delta, max) {
   return { title: 'Pickcat · ' + count + ' 条新消息', message: message };
 }
 
-/* 弹窗里显示的最近动态，条数跟随「通知里最多列几条」设置（1～5） */
-function recentFor(items, max) {
+/* 弹窗里显示的最近动态，条数跟随「通知里最多列几条」设置（1～5）
+   已经点开看过的消息不再回来：用一条稳定 key 记住，下轮检查时直接滤掉 */
+function itemKey(i) {
+  return [i.category || '', i.actor || '', i.ts || '', i.postId || i.topicId || '', i.floor || ''].join('|');
+}
+
+function recentFor(items, max, readSeen) {
   const n = Math.max(1, Math.min(5, Number(max) || 3));
-  return arrangeItems(items).slice(0, n).map(function (i) {
+  const skip = Array.isArray(readSeen) ? readSeen : [];
+  return arrangeItems(items).filter(function (i) {
+    return skip.indexOf(itemKey(i)) === -1;
+  }).slice(0, n).map(function (i) {
     return {
       actor: i.actor,
       actorId: i.actorId,
@@ -877,20 +886,42 @@ async function showSummary(rest) {
   return nid;
 }
 
-const ICONS_ON = { '16': 'icons/icon16.png', '32': 'icons/icon32.png', '48': 'icons/icon48.png', '128': 'icons/icon128.png' };
-const ICONS_IDLE = { '16': 'icons/idle16.png', '32': 'icons/idle32.png', '48': 'icons/idle48.png', '128': 'icons/idle128.png' };
+const ICONS_HOT = {
+  '16': 'icons/hot16.png', '24': 'icons/hot24.png', '32': 'icons/hot32.png', '48': 'icons/hot48.png',
+  '64': 'icons/hot64.png', '96': 'icons/hot96.png', '128': 'icons/hot128.png',
+  '192': 'icons/hot192.png', '256': 'icons/hot256.png'
+};
+const ICONS_ON = {
+  '16': 'icons/icon16.png', '24': 'icons/icon24.png', '32': 'icons/icon32.png', '48': 'icons/icon48.png',
+  '64': 'icons/icon64.png', '96': 'icons/icon96.png', '128': 'icons/icon128.png',
+  '192': 'icons/icon192.png', '256': 'icons/icon256.png'
+};
+const ICONS_IDLE = {
+  '16': 'icons/idle16.png', '24': 'icons/idle24.png', '32': 'icons/idle32.png', '48': 'icons/idle48.png',
+  '64': 'icons/idle64.png', '96': 'icons/idle96.png', '128': 'icons/idle128.png',
+  '192': 'icons/idle192.png', '256': 'icons/idle256.png'
+};
 
 async function updateBadge(count, c) {
+  // 关掉开关就换灰 C，别让用户以为它还在跑
+  if (c && c.enabled === false) {
+    try {
+      await chrome.action.setIcon({ path: ICONS_IDLE });
+    } catch (e) { /* 图标缺失时忽略 */ }
+    await chrome.action.setBadgeText({ text: '' });
+    return;
+  }
   const has = count > 0;
+  // 未读由字形右下角那块信号块变红表示；数字角标默认关闭（会压小图标），需要时再开
   try {
-    await chrome.action.setIcon({ path: has ? ICONS_ON : ICONS_IDLE });
+    await chrome.action.setIcon({ path: has ? ICONS_HOT : ICONS_ON });
   } catch (e) { /* 图标缺失时忽略 */ }
 
   if (!c.badge) {
     await chrome.action.setBadgeText({ text: '' });
     return;
   }
-  await chrome.action.setBadgeBackgroundColor({ color: '#C8362C' });
+  await chrome.action.setBadgeBackgroundColor({ color: '#FA322D' });
   await chrome.action.setBadgeText({ text: has ? (count > 99 ? '99+' : String(count)) : '' });
 }
 
@@ -913,6 +944,7 @@ async function poll() {
 
     try {
       const res = await readUnread();
+      const prev = await st();
 
       await saveSt({
         unread: res.count,
@@ -921,7 +953,7 @@ async function poll() {
         via: res.via,
         error: '',
         loggedOut: false,
-        recent: recentFor(res.items, c.notifyMax)
+        recent: recentFor(res.items, c.notifyMax, prev.readSeen)
       });
 
       await updateBadge(res.count, c);
@@ -1170,6 +1202,16 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
 
   if (msg.type === 'PC_OPEN_POST') {
     openTab(linkFor({ topicId: msg.topicId, floor: msg.floor }));
+    /* 点开看过的这条，立刻从「最近动态」里撤掉，下次检查也不再冒出来 */
+    (async function () {
+      try {
+        const s = await st();
+        const key = itemKey({ category: msg.category, actor: msg.actor, ts: msg.ts, postId: msg.topicId, floor: msg.floor });
+        const readSeen = (Array.isArray(s.readSeen) ? s.readSeen : []).concat([key]).slice(-300);
+        const recent = (Array.isArray(s.recent) ? s.recent : []).filter(function (x) { return itemKey(x) !== key; });
+        await saveSt({ readSeen: readSeen, recent: recent });
+      } catch (e) { /* 记录失败不影响打开帖子 */ }
+    })();
     sendResponse({ ok: true });
     return false;
   }

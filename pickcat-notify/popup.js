@@ -104,7 +104,11 @@ function itemRow(it) {
     row.className = 'feed-item clickable';
     row.title = '查看帖子' + (it.floor ? '第 ' + it.floor + ' 楼' : '');
     row.addEventListener('click', function () {
-      send({ type: 'PC_OPEN_POST', topicId: it.topicId, floor: it.floor });
+      send({ type: 'PC_OPEN_POST', topicId: it.topicId, floor: it.floor, category: it.category, actor: it.actor, ts: it.ts });
+      /* 看过的这条立刻从列表撤掉，不等下一次检查 */
+      lastRecent = lastRecent.filter(function (x) { return x !== it; });
+      markChips();
+      paintFeed();
     });
   }
 
