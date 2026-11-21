@@ -5,27 +5,33 @@
 <title>Pickcat 通知 · 开始使用</title>
 <link rel="stylesheet" href="ui.css">
 <style>
-  body { padding: 30px 28px 26px; }
-  .wrap { max-width: 660px; margin: 0 auto; }
+  body { padding: 26px 24px 24px; }
+  .wrap { max-width: 680px; margin: 0 auto; }
 
-  .hero { display: flex; align-items: flex-start; gap: 13px; }
+  .hero { display: flex; align-items: flex-start; gap: 13px; padding: 4px 2px 0; }
   .hero img { width: 44px; height: 44px; border-radius: 11px; }
-  h1 { margin: 0; font-size: 21px; font-weight: 650; letter-spacing: -.015em; }
+  h1 { margin: 0; font-size: 21px; font-weight: 650; letter-spacing: -.02em; }
   .lede { margin: 3px 0 0; color: var(--muted); font-size: 12.5px; }
 
-  .steps { margin-top: 20px; padding: 4px 18px; }
+  .steps { margin-top: 16px; padding: 6px 18px; }
   .step { display: flex; gap: 13px; padding: 13px 0; border-bottom: 1px solid var(--line-soft); }
   .step:last-child { border-bottom: none; }
   .idx {
-    flex: none; width: 20px;
-    color: var(--faint); font-size: 12px; font-weight: 600;
+    flex: none; width: 22px;
+    color: var(--brand); font-size: 12px; font-weight: 700;
     font-variant-numeric: tabular-nums; padding-top: 1px;
   }
   .step-t { font-size: 13.5px; font-weight: 600; color: var(--ink); }
-  .step-d { margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+  .step-d { margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.65; }
 
   .status { padding: 16px 18px; margin-top: 12px; }
-  .status .cap { font-size: 11px; letter-spacing: .06em; color: var(--faint); margin-bottom: 8px; }
+  .cap {
+    font-size: 11.5px; font-weight: 600; color: var(--ink-2); margin-bottom: 9px;
+  }
+  .cap::before {
+    content: ""; display: inline-block; width: 3px; height: 10px; margin-right: 7px;
+    border-radius: 2px; background: var(--brand); vertical-align: -1px;
+  }
   .status-body { font-size: 12.5px; line-height: 1.95; color: var(--ink-2); }
   .status-body .k { color: var(--faint); margin-right: 7px; }
   .status-body b { font-weight: 600; }
@@ -33,8 +39,7 @@
   .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 
   .note { margin-top: 12px; padding: 16px 18px; }
-  .note .cap { font-size: 11px; letter-spacing: .06em; color: var(--faint); margin-bottom: 8px; }
-  .note-body { font-size: 12px; line-height: 1.9; color: var(--muted); }
+  .note-body { font-size: 12.5px; line-height: 1.95; color: var(--muted); }
   .note-body b { color: var(--ink); font-weight: 600; }
 
   .byline { margin-top: 16px; }

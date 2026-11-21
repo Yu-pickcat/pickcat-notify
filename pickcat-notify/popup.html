@@ -4,24 +4,29 @@
 <meta charset="utf-8">
 <link rel="stylesheet" href="ui.css">
 <style>
-  body { width: 320px; }
+  body { width: 336px; }
   .wrap { padding: 14px 16px 12px; }
 
   header { display: flex; align-items: center; gap: 9px; }
-  header img { width: 20px; height: 20px; border-radius: 6px; }
-  .brand-name { font-size: 13.5px; font-weight: 650; letter-spacing: -.01em; }
+  header img {
+    width: 24px; height: 24px; border-radius: 7px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+  }
+  .brand-name { font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
   .brand-sub { font-size: 11px; color: var(--faint); margin-top: -1px; }
   .push { margin-left: auto; }
 
   .stat {
-    margin-top: 12px;
-    padding: 13px 14px 12px;
+    margin-top: 11px;
+    padding: 11px 13px 11px;
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: var(--r-card);
   }
   .stat-line { display: flex; align-items: baseline; gap: 5px; }
-  .stat-num { font-size: 30px; font-weight: 650; letter-spacing: -.03em; line-height: 1.1; }
+  .stat-num { font-size: 32px; font-weight: 650; letter-spacing: -.03em; line-height: 1.05; color: var(--ink); }
+  .stat-num.hot { color: var(--brand); }
   .stat-unit { font-size: 12px; color: var(--muted); }
   .stat-tag {
     margin-left: auto;
@@ -30,70 +35,111 @@
     background: var(--bg);
     color: var(--muted);
     font-size: 11px;
+    border: 1px solid var(--line);
   }
+  .stat-tag.on { background: var(--brand-soft); border-color: #f6cfcd; color: var(--signal); }
+  .stat-tag.ok { background: #e9f6ef; border-color: #c7e6d4; color: #1b7a4a; }
+  .stat-tag.warn { background: #fff6e6; border-color: #f4e2bd; color: #9a6a12; }
   .stat-meta { margin-top: 5px; color: var(--faint); font-size: 11.5px; }
   .stat-err { margin-top: 5px; color: var(--signal); font-size: 11.5px; line-height: 1.5; }
 
-  .feed { margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 9px; }
-  .feed:first-child { border-top: none; padding-top: 0; }
-  .feed-item { display: flex; gap: 8px; padding: 5px 0; }
+  .feed-head { display: flex; justify-content: space-between; align-items: center; margin: 13px 0 6px; }
+  .feed-head span { font-size: 11.5px; color: var(--ink-2); font-weight: 600; letter-spacing: .01em; }
+  .feed-head span::before {
+    content: ""; display: inline-block; width: 3px; height: 10px; margin-right: 6px;
+    border-radius: 2px; background: var(--brand); vertical-align: -1px;
+  }
+  .feed-head a { font-size: 11px; color: var(--muted); text-decoration: none; cursor: pointer; }
+  .feed-head a:hover { color: var(--brand); }
+
+  .chips { display: flex; gap: 4px; flex-wrap: wrap; margin: 0 0 6px; }
+  .chip {
+    height: 22px; padding: 0 8px;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--surface); color: var(--muted);
+    font-family: inherit; font-size: 11.5px; line-height: 20px;
+    cursor: pointer; transition: background .14s, color .14s, border-color .14s;
+  }
+  .chip:hover { border-color: #d2d2d2; color: var(--ink-2); }
+  .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+
+  #list { margin-top: 2px; max-height: 202px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+  #list::-webkit-scrollbar { width: 4px; }
+  #list::-webkit-scrollbar-thumb { background: #dcdcdc; border-radius: 4px; }
+  .feed-item {
+    display: flex; gap: 8px; padding: 6px;
+    border-radius: 6px; margin: 0 -6px;
+    transition: background .12s;
+  }
+  .feed-item:hover { background: #fafafa; }
+  .feed-item.clickable { cursor: pointer; }
   .ava {
     flex: none;
-    width: 20px; height: 20px;
+    width: 22px; height: 22px;
     border-radius: 999px;
     background: var(--surface-2);
     color: var(--ink-2);
-    font-size: 10px;
+    font-size: 10.5px;
     display: flex; align-items: center; justify-content: center;
     overflow: hidden;
   }
   .ava img { width: 100%; height: 100%; object-fit: cover; }
   .item-main { min-width: 0; flex: 1; }
-  .item-t { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; font-size: 12px; line-height: 1.45; color: var(--ink-2); }
+  .item-t { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; font-size: 12px; line-height: 1.5; color: var(--ink-2); }
   .item-t b { color: var(--ink); font-weight: 600; }
   .item-t .cat {
     flex: none; padding: 1px 6px;
-    border: 1px solid var(--line); border-radius: var(--r-chip);
-    background: var(--bg); color: var(--muted);
+    border: 1px solid var(--line); border-radius: 5px;
+    background: var(--bg); color: var(--faint);
     font-size: 10px; line-height: 1.5;
   }
   .item-meta { margin-top: 1px; font-size: 10.5px; color: var(--faint); }
   .item-d {
-    font-size: 11px; color: var(--faint); line-height: 1.4;
+    font-size: 11px; color: var(--faint); line-height: 1.45;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .empty { color: var(--faint); font-size: 11.5px; padding: 3px 0 1px; }
-  .feed-head { display: flex; justify-content: space-between; align-items: center; margin: 11px 0 2px; }
-  .feed-head span { font-size: 11px; color: var(--faint); letter-spacing: .06em; }
-  .feed-head a { font-size: 11px; color: var(--muted); text-decoration: none; cursor: pointer; }
-  .feed-head a:hover { color: var(--ink); }
+  .empty { color: var(--faint); font-size: 11.5px; padding: 6px 0 4px; }
+  .empty .go {
+    display: inline-block; margin-top: 4px; padding: 0;
+    border: 0; background: none; color: var(--brand);
+    font-family: inherit; font-size: 11.5px; cursor: pointer;
+  }
 
   .ctl {
-    display: flex; align-items: center; gap: 8px;
-    margin-top: 12px; padding-top: 11px;
+    display: flex; flex-direction: column; align-items: stretch; gap: 6px;
+    margin-top: 10px; padding-top: 10px;
     border-top: 1px solid var(--line-soft);
   }
   .ctl label { font-size: 12px; color: var(--muted); }
-  .ctl .seg { margin-left: auto; }
+  .ctl .seg { width: 100%; }
+  .ctl .seg button { flex: 1 1 0; min-width: 0; padding: 0 4px; }
 
-  .acts { display: flex; gap: 8px; margin-top: 9px; }
+  .acts { display: flex; gap: 8px; margin-top: 8px; }
   .acts .btn { flex: 1; }
 
   .more {
     display: flex; align-items: center; justify-content: center; gap: 4px;
-    width: 100%; height: 30px; margin-top: 6px;
+    width: 100%; height: 28px; margin-top: 4px;
     border: none; background: none; color: var(--faint);
     font-size: 11.5px; font-family: inherit; cursor: pointer;
   }
-  .more:hover { color: var(--ink-2); }
+  .more:hover { color: var(--brand); }
 
   .upd {
     display: flex; align-items: center; justify-content: space-between;
     margin-top: 2px; color: var(--faint); font-size: 11px;
   }
   .upd a { color: var(--muted); text-decoration: none; cursor: pointer; }
-  .upd a:hover { color: var(--ink); }
-  .upd a.new { color: var(--signal, #C8362C); font-weight: 600; }
+  .upd a:hover { color: var(--brand); }
+  .upd a.new { color: var(--brand); font-weight: 600; }
+
+  @media (prefers-color-scheme: dark) {
+    .feed-item:hover { background: #202021; }
+    .chip:hover { border-color: #3d3d3d; color: var(--ink-2); }
+    .stat-tag.on { border-color: rgba(255, 81, 72, .34); color: var(--brand); }
+    .stat-tag.ok { background: rgba(55, 189, 124, .14); border-color: rgba(55, 189, 124, .34); color: #6fd7a3; }
+    .stat-tag.warn { background: rgba(230, 170, 60, .14); border-color: rgba(230, 170, 60, .34); color: #e5c07b; }
+  }
 </style>
 </head>
 <body>
@@ -102,14 +148,14 @@
     <img src="icons/icon32.png" alt="">
     <div>
       <div class="brand-name">Pickcat 通知</div>
-      <div class="brand-sub">关掉网页也能收到 · <span id="ver">V2.4.7 beta</span></div>
+      <div class="brand-sub">关掉网页也能收到 · <span id="ver">V2.5.0 beta</span></div>
     </div>
     <div class="switch on push" id="sw"><div class="knob"></div></div>
   </header>
 
   <div class="stat">
     <div class="stat-line">
-      <div class="stat-num num" id="unread">0</div>
+      <div class="stat-num tnum" id="unread">0</div>
       <div class="stat-unit">条未读</div>
       <div class="stat-tag" id="tag">—</div>
     </div>
@@ -119,8 +165,17 @@
 
   <div class="feed-head">
     <span>最新动态</span>
-    <a id="all">查看全部</a>
+    <a id="all">消息中心</a>
   </div>
+
+  <div class="chips" id="chips">
+    <button type="button" class="chip on" data-f="all" data-label="全部">全部</button>
+    <button type="button" class="chip" data-f="mention" data-label="@我">@我</button>
+    <button type="button" class="chip" data-f="reply" data-label="回复">回复</button>
+    <button type="button" class="chip" data-f="like" data-label="赞">赞</button>
+    <button type="button" class="chip" data-f="system" data-label="系统">系统</button>
+  </div>
+
   <div id="list"></div>
 
   <div class="ctl">

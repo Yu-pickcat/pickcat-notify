@@ -8,6 +8,7 @@ const el = {
   meta: document.getElementById('meta'),
   err: document.getElementById('err'),
   list: document.getElementById('list'),
+  chips: document.getElementById('chips'),
   intervalSeg: document.getElementById('intervalSeg'),
   check: document.getElementById('check'),
   markAll: document.getElementById('markAll'),
@@ -41,14 +42,67 @@ function initial(name) {
 
 const CAT_NAME = { mention: '@我', reply: '回复', like: '赞', system: '系统' };
 
+/* 最近一次拿到的动态 + 当前筛选（重开弹窗还记着上次选的分类） */
+let lastRecent = [];
+let lastEmptyTip = '点下面的「立即检查」试一下';
+let filter = 'all';
+try { filter = localStorage.getItem('pcFilter') || 'all'; } catch (e) { filter = 'all'; }
+
+function markChips() {
+  if (!el.chips) return;
+  const n = { all: lastRecent.length };
+  lastRecent.forEach(function (it) {
+    if (it.category) n[it.category] = (n[it.category] || 0) + 1;
+  });
+  Array.prototype.forEach.call(el.chips.children, function (b) {
+    const f = b.dataset.f;
+    b.classList.toggle('on', f === filter);
+    const label = b.dataset.label || f;
+    /* 分类按钮后面跟一条数量，0 就不显示，免得一排都是 0 */
+    b.textContent = (f !== 'all' && n[f]) ? label + ' ' + n[f] : label;
+  });
+}
+
+/* 打开站内消息中心，能带上分类 tab 就直接带过去 */
+function openCenter(f) {
+  let url = 'https://pickcat.dao3.fun/notifications';
+  if (f && f !== 'all') url += '?tab=' + f;
+  chrome.tabs.create({ url: url });
+}
+
+function paintFeed() {
+  if (!el.list) return;
+  const src = lastRecent || [];
+  const shown = filter === 'all' ? src : src.filter(function (it) { return it.category === filter; });
+  el.list.innerHTML = '';
+  if (!shown.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = src.length
+      ? '最近 ' + src.length + ' 条里没有「' + (CAT_NAME[filter] || filter) + '」这类消息'
+      : lastEmptyTip;
+    if (src.length) {
+      const go = document.createElement('button');
+      go.className = 'go';
+      go.textContent = '去消息中心看全部 →';
+      go.addEventListener('click', function () { openCenter(filter); });
+      empty.appendChild(document.createElement('br'));
+      empty.appendChild(go);
+    }
+    el.list.appendChild(empty);
+    return;
+  }
+  shown.forEach(function (it) { el.list.appendChild(itemRow(it)); });
+}
+
 function itemRow(it) {
   const row = document.createElement('div');
   row.className = 'feed-item';
 
   /* 有帖子标识的动态，整行可点，直达对应帖子那一楼 */
   if (it.topicId) {
+    row.className = 'feed-item clickable';
     row.title = '查看帖子' + (it.floor ? '第 ' + it.floor + ' 楼' : '');
-    row.style.cursor = 'pointer';
     row.addEventListener('click', function () {
       send({ type: 'PC_OPEN_POST', topicId: it.topicId, floor: it.floor });
     });
@@ -142,15 +196,20 @@ function render(payload) {
 
   const count = Number(state.unread) || 0;
   el.unread.textContent = count > 99 ? '99+' : String(count);
+  el.unread.classList.toggle('hot', count > 0);
 
+  el.tag.className = 'stat-tag';
   if (!s.enabled) {
     el.tag.textContent = '已关闭';
   } else if (state.loggedOut) {
     el.tag.textContent = '未登录';
+    el.tag.classList.add('warn');
   } else if (state.error) {
     el.tag.textContent = '异常';
+    el.tag.classList.add('warn');
   } else if (state.lastCheck) {
     el.tag.textContent = '已连接';
+    el.tag.classList.add('ok');
   } else {
     el.tag.textContent = '待检查';
   }
@@ -165,15 +224,10 @@ function render(payload) {
     : '';
 
   const recent = Array.isArray(state.recent) ? state.recent : [];
-  el.list.innerHTML = '';
-  if (!recent.length) {
-    const empty = document.createElement('div');
-    empty.className = 'empty';
-    empty.textContent = state.lastCheck && !state.error ? '没有新消息' : '点下面的「立即检查」试一下';
-    el.list.appendChild(empty);
-  } else {
-    recent.forEach(function (it) { el.list.appendChild(itemRow(it)); });
-  }
+  lastRecent = recent;
+  lastEmptyTip = (state.lastCheck && !state.error) ? '没有新消息' : '点下面的「立即检查」试一下';
+  markChips();
+  paintFeed();
 }
 
 async function pull() {
@@ -195,6 +249,18 @@ el.intervalSeg.addEventListener('click', async function (e) {
   const resp = await send({ type: 'PC_SAVE', patch: { intervalMin: Number(b.dataset.v) } });
   render(resp);
 });
+
+/* 按类型筛选最近几条，纯前端过滤，不额外请求站点 */
+if (el.chips) {
+  el.chips.addEventListener('click', function (e) {
+    const b = e.target.closest('button');
+    if (!b || !b.dataset.f) return;
+    filter = b.dataset.f;
+    try { localStorage.setItem('pcFilter', filter); } catch (err) {}
+    markChips();
+    paintFeed();
+  });
+}
 
 el.check.addEventListener('click', async function () {
   el.check.disabled = true;
@@ -221,7 +287,7 @@ el.more.addEventListener('click', function () {
 });
 
 el.all.addEventListener('click', function () {
-  chrome.tabs.create({ url: 'https://pickcat.dao3.fun/notifications' });
+  openCenter(filter);
 });
 
 if (el.ver) {
