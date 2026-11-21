@@ -30,6 +30,30 @@ const EMPTY_STATE = {
   recent: []
 };
 
+/* ---------- 版本与更新（参考 PICKCAT Plus 的「关于页检查更新」） ----------
+   解压加载的扩展没有自动更新通道，只能自己比对远端版本号。
+   源顺序：GitHub Releases API（发布即生效、不走 CDN 缓存）→ jsDelivr 镜像的 manifest.json。
+   两个源都返回 Access-Control-Allow-Origin: *，后台直接 fetch，不需要新增 host 权限。 */
+const REPO = 'Yu-pickcat/pickcat-notify';
+const RELEASES_API = 'https://api.github.com/repos/' + REPO + '/releases?per_page=5';
+const RELEASE_PAGE = 'https://github.com/' + REPO + '/releases/tag/';
+const MANIFEST_SOURCES = [
+  'https://fastly.jsdelivr.net/gh/' + REPO + '@main/pickcat-notify/manifest.json',
+  'https://cdn.jsdelivr.net/gh/' + REPO + '@main/pickcat-notify/manifest.json',
+  'https://gcore.jsdelivr.net/gh/' + REPO + '@main/pickcat-notify/manifest.json',
+  'https://raw.githubusercontent.com/' + REPO + '/main/pickcat-notify/manifest.json'
+];
+const UPDATE_KEY = 'updateCheck';
+const UPDATE_TTL = 6 * 60 * 60 * 1000;
+
+/* ---------- 通知记账（参考 PickScribe 的按 id 去重） ----------
+   seen = 已经提醒过/已经见过的通知 id，首轮只记账不弹，避免装完把历史未读全弹一遍；
+   pending = 通知 id → 点击跳转链接，落盘保存，后台被挂起后点击也还能直达 */
+const NOTE_STATE_KEY = 'notifySeen';
+const NOTE_PREFIX = 'pickcat-n-';
+const SEEN_LIMIT = 300;
+const PENDING_LIMIT = 60;
+
 /* ---------- 存储 ---------- */
 
 async function cfg() {
@@ -53,14 +77,37 @@ function sleep(ms) {
   return new Promise(function (r) { setTimeout(r, ms); });
 }
 
-/* 后台 Service Worker 开标签页：浏览器刚启动、窗口刚被关掉，或闹钟唤醒 SW 的瞬间，
-   当前窗口可能还没就绪，tabs.create 会 reject「No current window」。
-   这里延迟重试一次；仍失败就静默放弃，不让未捕获错误出现在扩展错误页 */
-function openTab(url) {
-  chrome.tabs.create({ url: url }).catch(function () {
-    sleep(800).then(function () {
+/* 新开标签；浏览器刚启动、窗口刚被关掉，或闹钟唤醒 SW 的瞬间，当前窗口可能还没就绪，
+   tabs.create 会 reject「No current window」。这里延迟重试一次；仍失败就静默放弃 */
+function createOrRetry(url) {
+  return chrome.tabs.create({ url: url }).catch(function () {
+    return sleep(800).then(function () {
       return chrome.tabs.create({ url: url });
-    }).catch(function () { /* 窗口仍未就绪，放弃 */ });
+    });
+  }).catch(function () { /* 窗口仍未就绪，放弃 */ });
+}
+
+/* 打开链接。共存时最关键的一条：消息中心、更新页这类「不带锚点」的地址，
+   如果已经开着就直接切过去，不再开第二个标签——同时装了 PICKCAT Plus / PickScribe 时，
+   两边都会点开消息中心，这样最多只会有一个消息中心标签，不会开出一排重复页。
+   带 #post-<楼号> 的帖子链接每层楼是不同目标，不能复用别的楼层，直接新开 */
+function openTab(url) {
+  const target = String(url || '');
+  if (!target) return;
+  const canReuse = /^https?:/i.test(target) && target.indexOf('#') < 0;
+  if (!canReuse) {
+    createOrRetry(target);
+    return;
+  }
+  chrome.tabs.query({ url: target + '*' }).then(function (tabs) {
+    const live = (tabs || []).filter(function (t) { return t.id != null && !t.incognito; });
+    if (!live.length) return createOrRetry(target);
+    return chrome.tabs.update(live[0].id, { active: true }).catch(function () {
+      return createOrRetry(target);
+    });
+  }).catch(function () {
+    /* 查询本身失败（比如没有读标签地址的权限）就老实开新的 */
+    createOrRetry(target);
   });
 }
 
@@ -70,6 +117,168 @@ function clampMin(v) {
   if (n > 60) n = 60;
   return n;
 }
+
+/* ---------- 版本比较 ---------- */
+
+/* 逐段按数字比，不能按字符串比：字符串会把 2.10 判成比 2.9 小。
+   返回 1 表示 a 新、-1 表示 a 旧、0 表示一样 */
+function verCmp(a, b) {
+  const x = String(a || '').split('.');
+  const y = String(b || '').split('.');
+  const n = Math.max(x.length, y.length);
+  for (let i = 0; i < n; i++) {
+    const p = Number(x[i]) || 0;
+    const q = Number(y[i]) || 0;
+    if (p > q) return 1;
+    if (p < q) return -1;
+  }
+  return 0;
+}
+
+/* 'v2.4.7-beta' → '2.4.7'；取不到数字就返回空串 */
+function tagVersion(tag) {
+  const m = String(tag || '').match(/(\d+\.\d+(?:\.\d+)*)/);
+  return m ? m[1] : '';
+}
+
+/* 带超时的 JSON 请求；失败、超时、非 2xx 都返回 null，不抛错（离线时静默） */
+async function readJsonSafe(url, ms) {
+  let ctl = null;
+  let timer = 0;
+  try {
+    if (typeof AbortController === 'function') {
+      ctl = new AbortController();
+      timer = setTimeout(function () { ctl.abort(); }, ms || 8000);
+    }
+    const res = await fetch(url, {
+      cache: 'no-store',
+      credentials: 'omit',
+      headers: { accept: 'application/json' },
+      signal: ctl ? ctl.signal : undefined
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/* 取远端最新版本：先问 Releases（能同时拿到 tag 与下载页），再退回镜像里的 manifest */
+async function fetchLatestVersion() {
+  const rel = await readJsonSafe(RELEASES_API + '&_=' + Date.now(), 9000);
+  if (Array.isArray(rel)) {
+    const list = rel.filter(function (r) { return r && !r.draft && r.tag_name; });
+    if (list.length) {
+      const ver = tagVersion(list[0].tag_name);
+      if (ver) {
+        return {
+          version: ver,
+          tag: list[0].tag_name,
+          url: list[0].html_url || (RELEASE_PAGE + encodeURIComponent(list[0].tag_name))
+        };
+      }
+    }
+  }
+  for (let i = 0; i < MANIFEST_SOURCES.length; i++) {
+    const mf = await readJsonSafe(MANIFEST_SOURCES[i] + '?_=' + Date.now(), 6000);
+    const ver = tagVersion(mf && mf.version);
+    if (ver) return { version: ver, tag: '', url: 'https://github.com/' + REPO + '/releases' };
+  }
+  return null;
+}
+
+/* force=false 时优先用 6 小时内的缓存，避免设置页每开一次都请求外网 */
+async function checkUpdate(force) {
+  const local = chrome.runtime.getManifest().version;
+  const got = await chrome.storage.local.get(UPDATE_KEY);
+  const cached = got[UPDATE_KEY];
+  if (!force && cached && cached.version && cached.at && Date.now() - cached.at < UPDATE_TTL) {
+    return {
+      ok: true,
+      local: local,
+      latest: cached.version,
+      url: cached.url || '',
+      hasNew: verCmp(cached.version, local) > 0,
+      cached: true,
+      at: cached.at
+    };
+  }
+  const r = await fetchLatestVersion();
+  if (!r) {
+    return { ok: false, local: local, latest: '', url: '', hasNew: false, error: '网络不通，稍后再试' };
+  }
+  const at = Date.now();
+  const patch = {};
+  patch[UPDATE_KEY] = { version: r.version, url: r.url, at: at };
+  await chrome.storage.local.set(patch);
+  return {
+    ok: true,
+    local: local,
+    latest: r.version,
+    url: r.url,
+    hasNew: verCmp(r.version, local) > 0,
+    cached: false,
+    at: at
+  };
+}
+
+/* ---------- 通知记账 ---------- */
+
+async function noteState() {
+  const got = await chrome.storage.local.get(NOTE_STATE_KEY);
+  const s = got[NOTE_STATE_KEY] || {};
+  return {
+    seeded: !!s.seeded,
+    seen: Array.isArray(s.seen) ? s.seen.slice() : [],
+    pending: (s.pending && typeof s.pending === 'object') ? s.pending : {}
+  };
+}
+
+async function saveNoteState(s) {
+  const patch = {};
+  patch[NOTE_STATE_KEY] = s;
+  await chrome.storage.local.set(patch);
+}
+
+/* pending 只留最近 60 条，避免越攒越多 */
+function prunePending(s) {
+  const p = s.pending || {};
+  const keys = Object.keys(p);
+  if (keys.length <= PENDING_LIMIT) return s;
+  keys.sort(function (a, b) { return (p[b].at || 0) - (p[a].at || 0); });
+  const keep = keys.slice(0, PENDING_LIMIT);
+  const next = {};
+  keep.forEach(function (k) { next[k] = p[k]; });
+  s.pending = next;
+  return s;
+}
+
+/* 本轮真正该弹的：未读、类型开着、以前没见过。首轮（seeded=false）一条都不弹 */
+function freshItems(items, seen, seeded) {
+  if (!Array.isArray(items)) return [];
+  const seenArr = Array.isArray(seen) ? seen : [];
+  return items.filter(function (it) {
+    if (!it || typeof it !== 'object' || !it.id) return false;
+    if (it.readAt !== null && typeof it.readAt !== 'undefined') return false;
+    if (!seeded) return false;
+    return seenArr.indexOf(it.id) < 0;
+  });
+}
+
+/* 把本轮见到的 id 并进 seen，去重并裁到 300 条 */
+function mergeSeen(seen, items) {
+  const out = Array.isArray(seen) ? seen.slice() : [];
+  if (Array.isArray(items)) {
+    items.forEach(function (it) {
+      if (it && it.id && out.indexOf(it.id) < 0) out.push(it.id);
+    });
+  }
+  if (out.length > SEEN_LIMIT) out.splice(0, out.length - SEEN_LIMIT);
+  return out;
+}
+
 
 /* ---------- 闹钟 ---------- */
 
@@ -415,8 +624,8 @@ function parseTs(v) {
    直接 <img> 会被浏览器拦掉。这里由后台凭跨源权限把头像抓成 data URL 再给弹窗，
    data URL 同源加载不受 CORP 限制。内存缓存避免重复抓取。 */
 const avatarCache = {};
-/* 通知 id → 直达帖子链接；内存映射，后台重启后清空，未命中就回消息中心 */
-const noteLinks = {};
+/* 通知序号：只用来给「还有 N 条」这类汇总通知拼一个不重复的 id；
+   单条通知直接用消息自己的 id，见 NOTE_PREFIX */
 let noteSeq = 0;
 
 function readBlobAsDataUrl(blob) {
@@ -602,36 +811,62 @@ async function capNotifications() {
   } catch (e) { /* 不支持 getAll 时忽略 */ }
 }
 
-async function showNote(count, items, delta) {
+/* 一条新消息单独弹一条通知：谁 + 做了什么 + 哪条帖子第几楼。
+   通知 id 用消息自己的 id（稳定），同一条消息不会重复弹；
+   跳转链接写进 storage 的 pending，后台被回收后点击仍然能直达 */
+async function showItemNote(raw) {
   const c = await cfg();
-  const text = noteText(count, items, delta, c.notifyMax);
+  const one = normalizeItem(raw);
+  if (!one) return null;
+  /* 直接拼单条文案：normalizeItem 已经把「谁 + 做了啥 + 哪条」拆好了，
+     再走 noteText 会被二次 normalize 丢掉字段 */
+  const title = (one.actor || '有人') + ' ' + (one.action || '有新消息');
+  const message = topicLine(one) || '点开消息中心看详情';
 
-  /* 只有一条时，通知图标用发送者头像；多条或没头像就回退扩展图标。
-     头像先抓成 data URL（避开站点 CORP 跨源限制），抓不到再退远程地址，最后回退扩展图标 */
-  const list = arrangeItems(items);
-  const unread = list.filter(function (i) { return !i.read; });
-  const use = (unread.length ? unread : list).slice(0, Math.max(1, Number(c.notifyMax) || 3));
+  /* 图标用发送者头像：先抓成 data URL（绕开站点 CORP 跨源限制），抓不到再退远程地址，最后回退扩展图标 */
   let iconUrl = chrome.runtime.getURL(ICON_PATH);
-  if (use.length === 1 && use[0].avatar) {
-    const data = await avatarDataUrl(use[0].avatar);
+  if (one.avatar) {
+    const data = await avatarDataUrl(one.avatar);
     if (data) iconUrl = data;
-    else if (/^https?:\/\//i.test(use[0].avatar)) iconUrl = use[0].avatar;
+    else if (/^https?:\/\//i.test(one.avatar)) iconUrl = one.avatar;
   }
 
+  const nid = NOTE_PREFIX + String(raw.id || Date.now());
+  const ns = await noteState();
+  ns.pending[nid] = { url: linkFor(one), at: Date.now() };
+  await saveNoteState(prunePending(ns));
+
   await capNotifications();
-  const nid = 'pickcat-' + Date.now() + '-' + (++noteSeq);
-  delete noteLinks[nid];
-  /* 单条通知记住直达链接；多条没有唯一目标，点开回消息中心 */
-  if (use.length === 1) noteLinks[nid] = linkFor(use[0]);
   chrome.notifications.create(nid, {
     type: 'basic',
     iconUrl: iconUrl,
-    title: text.title,
-    message: text.message,
+    title: title,
+    message: message,
     contextMessage: 'Pickcat 通知助手',
     silent: !c.sound,
     priority: 2
   });
+  return nid;
+}
+
+/* 新消息比设置里允许的条数多时，多出来的合并成一条「还有 N 条」 */
+async function showSummary(rest) {
+  const c = await cfg();
+  await capNotifications();
+  const nid = 'pickcat-sum-' + Date.now() + '-' + (++noteSeq);
+  const ns = await noteState();
+  ns.pending[nid] = { url: BASE + '/notifications', at: Date.now() };
+  await saveNoteState(prunePending(ns));
+  chrome.notifications.create(nid, {
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL(ICON_PATH),
+    title: '还有 ' + rest + ' 条新消息',
+    message: '前面几条已经单独提醒过，点这里看全部',
+    contextMessage: 'Pickcat 通知助手',
+    silent: !c.sound,
+    priority: 1
+  });
+  return nid;
 }
 
 const ICONS_ON = { '16': 'icons/icon16.png', '32': 'icons/icon32.png', '48': 'icons/icon48.png', '128': 'icons/icon128.png' };
@@ -670,8 +905,6 @@ async function poll() {
 
     try {
       const res = await readUnread();
-      const prev = await st();
-      const prevCount = Number(prev.lastCount) || 0;
 
       await saveSt({
         unread: res.count,
@@ -685,11 +918,30 @@ async function poll() {
 
       await updateBadge(res.count, c);
 
-      if (c.notify && res.count > 0 && res.count > prevCount && !inDnd(c)) {
-        const picked = filterByTypes(res.items, c.notifyTypes);
-        if (picked.length) await showNote(res.count, picked, res.count - prevCount);
+      /* 先按 id 记账再决定弹不弹：首轮只记账（避免装完把历史未读一起弹），
+         之后只弹「以前没见过 & 未读 & 类型开着」的那几条，一条新消息只弹一次 */
+      const ns = await noteState();
+      const picked = filterByTypes(res.items, c.notifyTypes);
+      const fresh = (c.notify && !inDnd(c)) ? freshItems(picked, ns.seen, ns.seeded) : [];
+      let noteCount = 0;
+
+      if (fresh.length) {
+        const max = Math.max(1, Math.min(5, Number(c.notifyMax) || 3));
+        const shown = fresh.slice(0, max);
+        for (let k = 0; k < shown.length; k++) await showItemNote(shown[k]);
+        noteCount = shown.length;
+        if (fresh.length > shown.length) {
+          await showSummary(fresh.length - shown.length);
+          noteCount = fresh.length;
+        }
       }
-      return { ok: true, count: res.count, via: res.via };
+
+      /* 记账：本轮见到的全部 id（含已读、含被类型开关滤掉的），关掉再打开也不会补弹旧消息 */
+      ns.seen = mergeSeen(ns.seen, res.items);
+      ns.seeded = true;
+      await saveNoteState(prunePending(ns));
+
+      return { ok: true, count: res.count, via: res.via, notes: noteCount };
     } catch (e) {
       const msg = String((e && e.message) || e);
       await saveSt({
@@ -719,6 +971,9 @@ chrome.runtime.onInstalled.addListener(async function (details) {
   await ensureAlarm();
   poll();
   startTicker();
+
+  /* 升级安装时弹一次「已更新」通知，同一个版本只弹一次（参考 PickScribe 的升级提示） */
+  if (details && details.reason === 'update') await showUpdateNotice();
 
   if (!got.welcomeShown) {
     await chrome.storage.local.set({ welcomeShown: true });
@@ -754,11 +1009,49 @@ chrome.notifications.onClicked.addListener(async function (id) {
     openTab(chrome.runtime.getURL('welcome.html'));
     return;
   }
-  /* 单条通知直达对应帖子；多条或没记到链接时回消息中心 */
-  const url = noteLinks[id] || BASE + '/notifications';
-  delete noteLinks[id];
+  /* 升级提示：点正文直接去看更新内容 */
+  if (id.indexOf('pickcat-update-') === 0) {
+    openTab(RELEASE_PAGE + encodeURIComponent(id.slice('pickcat-update-'.length)));
+    return;
+  }
+  /* 单条新消息的通知 id 就是这条消息的 id，直达链接存在 storage 的 pending 里；
+     多条汇总的通知回消息中心；都没记到就回消息中心 */
+  const ns = await noteState();
+  const hit = ns.pending && ns.pending[id];
+  const url = (hit && hit.url) || BASE + '/notifications';
+  if (hit) {
+    delete ns.pending[id];
+    await saveNoteState(ns);
+  }
   openTab(url);
 });
+
+/* 升级提示上的按钮：第一个去看更新内容，第二个关掉 */
+chrome.notifications.onButtonClicked.addListener(async function (id, index) {
+  if (id.indexOf('pickcat-update-') !== 0) return;
+  const ver = id.slice('pickcat-update-'.length);
+  if (index === 0) openTab(RELEASE_PAGE + encodeURIComponent(ver));
+  try { await chrome.notifications.clear(id); } catch (e) { /* 通知已消失 */ }
+});
+
+/* 升级后弹一次提示，同一个版本只弹一次（参考 PickScribe 的 showUpdateNotice） */
+async function showUpdateNotice() {
+  const mf = chrome.runtime.getManifest();
+  const ver = mf.version;
+  const name = mf.version_name || ('V' + ver);
+  const got = await chrome.storage.local.get('updateNotice');
+  if (got.updateNotice === ver) return;
+  await chrome.storage.local.set({ updateNotice: ver });
+  chrome.notifications.create('pickcat-update-' + ver, {
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL(ICON_PATH),
+    title: 'Pickcat 通知已更新到 ' + name,
+    message: '看看这次改了什么？可以和 PICKCAT Plus、PickScribe 同时安装。',
+    contextMessage: 'Pickcat 通知助手',
+    buttons: [{ title: '看看更新内容' }, { title: '以后再说' }],
+    priority: 1
+  });
+}
 
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   if (!msg || !msg.type) return;
@@ -768,6 +1061,25 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       sendResponse({ result: r, state: await st() });
     });
     return true;
+  }
+
+  /* 设置页 / 弹窗里的「检查更新」：force=true 忽略 6 小时缓存 */
+  if (msg.type === 'PC_CHECK_UPDATE') {
+    (async function () {
+      try {
+        sendResponse(await checkUpdate(!!msg.force));
+      } catch (e) {
+        sendResponse({ ok: false, local: chrome.runtime.getManifest().version, hasNew: false, error: String((e && e.message) || e) });
+      }
+    })();
+    return true;
+  }
+
+  /* 打开扩展页里的外部链接（设置页的「去下载」） */
+  if (msg.type === 'PC_OPEN_URL') {
+    openTab(String(msg.url || ''));
+    sendResponse({ ok: true });
+    return false;
   }
 
   if (msg.type === 'PC_MARK_ALL_READ') {

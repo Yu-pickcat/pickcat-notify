@@ -40,7 +40,12 @@ const el = {
   openSite: document.getElementById('openSite'),
   openWelcome: document.getElementById('openWelcome'),
   closeHelper: document.getElementById('closeHelper'),
-  closedTest: document.getElementById('closedTest')
+  closedTest: document.getElementById('closedTest'),
+  verNow: document.getElementById('verNow'),
+  updDot: document.getElementById('updDot'),
+  updStatus: document.getElementById('updStatus'),
+  checkUpdate: document.getElementById('checkUpdate'),
+  goDownload: document.getElementById('goDownload')
 };
 
 let settings = null;
@@ -295,6 +300,79 @@ el.closedTest.addEventListener('click', async function () {
 
 const mf = chrome.runtime.getManifest();
 el.ver.textContent = mf.version_name || ('v' + mf.version);
+if (el.verNow) el.verNow.textContent = mf.version_name || ('v' + mf.version);
+
+/* ---------- 版本与更新（设置页里直接查，参考 PICKCAT Plus） ---------- */
+
+let updateState = null;
+
+/* 状态点 + 状态文字一起变：绿点=已最新，红点=查失败，灰点=有新版本/还没查 */
+function setUpdLook(dot, status) {
+  if (el.updDot) el.updDot.className = 'dot' + (dot ? ' ' + dot : '');
+  if (el.updStatus) el.updStatus.className = 'upd-status' + (status ? ' ' + status : '');
+}
+
+function paintUpdate() {
+  if (!updateState) {
+    setUpdLook('', '');
+    el.updStatus.textContent = '解压加载的扩展不会自动更新，可以在这里手动查一次';
+    el.goDownload.style.display = 'none';
+    return;
+  }
+  const r = updateState;
+  if (r.checking) {
+    setUpdLook('', '');
+    el.updStatus.textContent = '正在检查…';
+    el.checkUpdate.disabled = true;
+    el.checkUpdate.textContent = '检查中…';
+    el.goDownload.style.display = 'none';
+    return;
+  }
+  el.checkUpdate.disabled = false;
+  if (!r.ok) {
+    setUpdLook('bad', 'bad');
+    el.updStatus.textContent = r.error || '检查失败，稍后再试';
+    el.checkUpdate.textContent = '重试';
+    el.goDownload.style.display = 'none';
+    return;
+  }
+  if (r.hasNew) {
+    setUpdLook('', 'new');
+    el.updStatus.textContent = '🎉 有新版本 v' + r.latest + ' 可用（当前 v' + r.local + '）';
+    el.checkUpdate.textContent = '再检查一次';
+    el.goDownload.style.display = '';
+    return;
+  }
+  setUpdLook('ok', '');
+  el.updStatus.textContent = '已是最新版本（v' + r.local + '）'
+    + (r.cached ? ' · 结果来自缓存，6 小时内不重复联网' : '');
+  el.checkUpdate.textContent = '再检查一次';
+  el.goDownload.style.display = 'none';
+}
+
+async function doCheckUpdate(force) {
+  updateState = { checking: true };
+  paintUpdate();
+  try {
+    const r = await send({ type: 'PC_CHECK_UPDATE', force: !!force });
+    updateState = r && r.local ? r : { ok: false, error: '后台没响应，稍后再试' };
+  } catch (e) {
+    updateState = { ok: false, error: String((e && e.message) || e) };
+  }
+  paintUpdate();
+}
+
+if (el.checkUpdate) {
+  el.checkUpdate.addEventListener('click', function () { doCheckUpdate(true); });
+}
+if (el.goDownload) {
+  el.goDownload.addEventListener('click', function () {
+    const url = (updateState && updateState.url) || 'https://github.com/Yu-pickcat/pickcat-notify/releases';
+    send({ type: 'PC_OPEN_URL', url: url });
+  });
+}
 
 refreshDiag();
+/* 打开设置页先走 6 小时缓存，命中就不再联网 */
+doCheckUpdate(false);
 setInterval(refreshDiag, 5000);

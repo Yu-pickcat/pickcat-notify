@@ -12,7 +12,9 @@ const el = {
   check: document.getElementById('check'),
   markAll: document.getElementById('markAll'),
   more: document.getElementById('more'),
-  all: document.getElementById('all')
+  all: document.getElementById('all'),
+  updText: document.getElementById('updText'),
+  updDo: document.getElementById('updDo')
 };
 
 let settings = null;
@@ -225,6 +227,32 @@ el.all.addEventListener('click', function () {
 if (el.ver) {
   const mf = chrome.runtime.getManifest();
   el.ver.textContent = mf.version_name || ('v' + mf.version);
+}
+
+/* 弹窗底部一行：查有没有新版本，有新版本直接给「去下载」 */
+let updLatest = null;
+
+if (el.updDo) {
+  el.updDo.addEventListener('click', async function () {
+    if (updLatest) {
+      chrome.tabs.create({ url: updLatest });
+      return;
+    }
+    el.updDo.textContent = '检查中…';
+    const r = await send({ type: 'PC_CHECK_UPDATE' });
+    if (!r || !r.local) {
+      el.updDo.textContent = '检查失败，点重试';
+      return;
+    }
+    if (r.hasNew) {
+      updLatest = r.url || ('https://github.com/Yu-pickcat/pickcat-notify/releases/tag/v' + r.latest + '-beta');
+      el.updDo.textContent = '有新版 v' + r.latest + ' · 去下载';
+      el.updDo.classList.add('new');
+      return;
+    }
+    el.updDo.textContent = '已是最新（v' + r.local + '）';
+    setTimeout(function () { el.updDo.textContent = '检查更新'; }, 2200);
+  });
 }
 
 pull();
