@@ -1076,6 +1076,10 @@ chrome.notifications.onButtonClicked.addListener(async function (id, index) {
 
 /* 每个版本到底改了什么：升级提示里直接列出来，不再写空话 */
 const UPDATE_NOTES = {
+  '2.6.3': [
+    '图标 SVG 先平滑再转路径，边缘不再有像素抖动',
+    '页面图标全部矢量，设置页仍是带红块那版'
+  ],
   '2.6.2': [
     '页面里的图标换成 SVG 矢量，放在多大都是硬的',
     '设置页头部用带红块那版图标',
