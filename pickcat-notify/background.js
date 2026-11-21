@@ -754,7 +754,7 @@ function noteText(count, items, delta, max) {
   const use = (unread.length ? unread : list).slice(0, Math.max(1, Number(max) || 3));
 
   if (!use.length) {
-    return { title: 'Pickcat 有新消息', message: '你现在有 ' + count + ' 条未读' };
+    return { title: 'pickcat 有新消息', message: '你现在有 ' + count + ' 条未读' };
   }
 
   if (use.length === 1) {
@@ -775,7 +775,7 @@ function noteText(count, items, delta, max) {
   }).join('\n');
   if (count > use.length) message += '\n· 还有 ' + (count - use.length) + ' 条';
 
-  return { title: 'Pickcat · ' + count + ' 条新消息', message: message };
+  return { title: 'pickcat · ' + count + ' 条新消息', message: message };
 }
 
 /* 弹窗里显示的最近动态，条数跟随「通知里最多列几条」设置（1～5）
@@ -867,7 +867,7 @@ async function showItemNote(raw) {
     iconUrl: iconUrl,
     title: title,
     message: message,
-    contextMessage: 'Pickcat 通知助手',
+    contextMessage: 'pickcat 通知',
     silent: !c.sound,
     priority: 2
   });
@@ -887,7 +887,7 @@ async function showSummary(rest) {
     iconUrl: chrome.runtime.getURL(ICON_PATH),
     title: '还有 ' + rest + ' 条新消息',
     message: '前面几条已经单独提醒过，点这里看全部',
-    contextMessage: 'Pickcat 通知助手',
+    contextMessage: 'pickcat 通知',
     silent: !c.sound,
     priority: 1
   });
@@ -1039,7 +1039,7 @@ chrome.runtime.onInstalled.addListener(async function (details) {
     chrome.notifications.create('pickcat-welcome-once', {
       type: 'basic',
       iconUrl: chrome.runtime.getURL(ICON_PATH),
-      title: 'Pickcat 通知已开启',
+      title: 'pickcat 通知已开启',
       message: '这是一次性测试通知。以后只在新消息到来时提醒你。',
       priority: 2
     });
@@ -1084,6 +1084,10 @@ chrome.notifications.onButtonClicked.addListener(async function (id, index) {
 
 /* 每个版本到底改了什么：升级提示里直接列出来，不再写空话 */
 const UPDATE_NOTES = {
+  '2.6.7': [
+    '扩展名统一成「pickcat 通知」，和弹窗、设置页、系统通知保持一致',
+    '页面标题、通知正文里的旧名字一起换掉'
+  ],
   '2.6.6': [
     '修掉更新提示点开就 404：Release 地址补上了 tag 的 v 前缀',
     '更新提示、设置页检查更新用的是同一个地址生成方式'
@@ -1139,9 +1143,9 @@ async function showUpdateNotice() {
   chrome.notifications.create('pickcat-update-' + ver, {
     type: 'basic',
     iconUrl: chrome.runtime.getURL(ICON_PATH),
-    title: 'Pickcat 通知已更新到 ' + name,
+    title: 'pickcat 通知已更新到 ' + name,
     message: body,
-    contextMessage: 'Pickcat 通知助手',
+    contextMessage: 'pickcat 通知',
     buttons: [{ title: '看看更新内容' }, { title: '以后再说' }],
     priority: 1
   });
