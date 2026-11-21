@@ -686,8 +686,11 @@ function normalizeItem(it) {
   const postObj = d.post || {};
   const commentObj = d.comment || {};
   /* 作品类通知（被赞、被评论、作品评论被赞/被回复）带的是 work 对象，
-     帖子和评论区这两种走 topic/post，字段互不相同，这里各取各的 */
+     帖子和评论区这两种走 topic/post，字段互不相同，这里各取各的。
+     管理通知这类是站点先归一化成 details.target 里的扁平字段（workId / topicId / postNumber），
+     所以两条路都要认 */
   const workObj = d.work || {};
+  const tgt = d.target || {};
 
   let excerpt = firstOf(d, ['excerpt', 'content', 'title', 'text', 'body']);
   if (!excerpt && commentObj) excerpt = firstOf(commentObj, ['excerpt', 'content', 'body']);
@@ -697,11 +700,13 @@ function normalizeItem(it) {
 
   const topicTitle = flat(firstOf(topicObj, ['title']) || firstOf(workObj, ['workName', 'title', 'name']), 60);
   /* 帖子楼层是 post.postNumber，作品评论楼层是 comment.commentNumber，两者互斥 */
-  const floor = Number(postObj.postNumber) || Number(commentObj.commentNumber) || 0;
-  const postId = postObj.id || '';
-  const topicId = topicObj.id || '';
-  const workId = workObj.id || firstOf(d, ['workId']) || '';
+  const floor = Number(postObj.postNumber) || Number(commentObj.commentNumber) || Number(tgt.postNumber) || 0;
+  const postId = postObj.id || tgt.postId || '';
+  const topicId = topicObj.id || tgt.topicId || '';
+  const workId = workObj.id || tgt.workId || firstOf(d, ['workId']) || '';
   const actorId = actorObj.id || '';
+  /* 关注类没有作品/帖子目标，站点也不给，只有对方账号 id——这一类直接开对方主页 */
+  const profileId = it.type === 'USER_FOLLOWED' ? actorId : '';
 
   const action = TYPE_ACTION[it.type] || '有新消息';
   const category = categoryOf(it.type);
@@ -721,6 +726,7 @@ function normalizeItem(it) {
     postId: postId,
     topicId: topicId,
     workId: workId,
+    profileId: profileId,
     read: isRead,
     ts: ts
   };
@@ -751,9 +757,12 @@ function topicLine(i) {
 function linkFor(i) {
   const work = (i && i.workId) || '';
   const topic = (i && i.topicId) || '';
+  const who = (i && i.profileId) || '';
   const floor = Number(i && i.floor) || 0;
   if (work) return BASE + '/works/' + work + (floor > 0 ? '#post-' + floor : '');
   if (topic) return BASE + '/forum/post/' + topic + (floor > 0 ? '#post-' + floor : '');
+  /* 关注类只有人，没有内容可落，开对方主页 */
+  if (who) return BASE + '/profile/' + who;
   return BASE + '/notifications';
 }
 
@@ -812,7 +821,8 @@ function recentFor(items, max, readSeen) {
       ts: i.ts,
       postId: i.postId,
       topicId: i.topicId,
-      workId: i.workId
+      workId: i.workId,
+      profileId: i.profileId
     };
   });
 }
@@ -1095,6 +1105,11 @@ chrome.notifications.onButtonClicked.addListener(async function (id, index) {
 
 /* 每个版本到底改了什么：升级提示里直接列出来，不再写空话 */
 const UPDATE_NOTES = {
+  '2.6.9': [
+    '「关注了你」点开进对方主页，不再一律落到消息中心',
+    '管理通知这类把目标藏在 details.target 里的，现在也认得出作品和帖子',
+    '现在除了等级/申诉这种站点自己也不给目标的，每条通知点下去都有具体落点'
+  ],
   '2.6.8': [
     '修掉作品类通知点开没反应：被赞、被评论、作品评论被赞/被回复，现在直接打开作品页',
     '作品页地址按站点自己的规则拼：/works/作品id，带评论就落到那一条（#post-楼号）',
@@ -1275,7 +1290,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   }
 
   if (msg.type === 'PC_OPEN_POST') {
-    openTab(linkFor({ topicId: msg.topicId, workId: msg.workId, floor: msg.floor }));
+    openTab(linkFor({ topicId: msg.topicId, workId: msg.workId, profileId: msg.profileId, floor: msg.floor }));
     /* 点开看过的这条，立刻从「最近动态」里撤掉，下次检查也不再冒出来 */
     (async function () {
       try {
