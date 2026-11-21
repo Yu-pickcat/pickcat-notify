@@ -37,11 +37,13 @@ const EMPTY_STATE = {
 const REPO = 'Yu-pickcat/pickcat-notify';
 const RELEASES_API = 'https://api.github.com/repos/' + REPO + '/releases?per_page=5';
 const RELEASE_PAGE = 'https://github.com/' + REPO + '/releases/tag/';
+/* 直连 raw.githubusercontent 最快也最新（GitHub 自己的文件），jsDelivr 只是备用：
+   在国内网络里 jsDelivr 偶尔整段不可用，实测浏览器里会直接 Failed to fetch */
 const MANIFEST_SOURCES = [
+  'https://raw.githubusercontent.com/' + REPO + '/main/pickcat-notify/manifest.json',
   'https://fastly.jsdelivr.net/gh/' + REPO + '@main/pickcat-notify/manifest.json',
   'https://cdn.jsdelivr.net/gh/' + REPO + '@main/pickcat-notify/manifest.json',
-  'https://gcore.jsdelivr.net/gh/' + REPO + '@main/pickcat-notify/manifest.json',
-  'https://raw.githubusercontent.com/' + REPO + '/main/pickcat-notify/manifest.json'
+  'https://gcore.jsdelivr.net/gh/' + REPO + '@main/pickcat-notify/manifest.json'
 ];
 const UPDATE_KEY = 'updateCheck';
 const UPDATE_TTL = 6 * 60 * 60 * 1000;
@@ -181,11 +183,17 @@ async function fetchLatestVersion() {
       }
     }
   }
-  for (let i = 0; i < MANIFEST_SOURCES.length; i++) {
-    const mf = await readJsonSafe(MANIFEST_SOURCES[i] + '?_=' + Date.now(), 6000);
-    const ver = tagVersion(mf && mf.version);
-    if (ver) return { version: ver, tag: '', url: 'https://github.com/' + REPO + '/releases' };
+  /* 镜像源各自缓存进度不一样（jsDelivr 边缘节点可能还停在旧版本），
+     所以并行拉全部、取其中版本号最大的那个，而不是第一个成功就算数 */
+  const got = await Promise.all(MANIFEST_SOURCES.map(function (u) {
+    return readJsonSafe(u + '?_=' + Date.now(), 6000);
+  }));
+  let best = '';
+  for (let i = 0; i < got.length; i++) {
+    const ver = tagVersion(got[i] && got[i].version);
+    if (ver && verCmp(ver, best) > 0) best = ver;
   }
+  if (best) return { version: best, tag: '', url: 'https://github.com/' + REPO + '/releases' };
   return null;
 }
 
