@@ -4,9 +4,10 @@
 <meta charset="utf-8">
 <title>Pickcat 通知 · 设置</title>
 <link rel="stylesheet" href="ui.css">
+<script src="shell.js"></script>
 <style>
   body { padding: 22px 24px 30px; }
-  .wrap { max-width: 760px; margin: 0 auto; }
+  .wrap { max-width: min(1080px, 92vw); margin: 0 auto; }
 
   header {
     display: flex; align-items: center; gap: 11px;
@@ -46,7 +47,7 @@
 <body>
 <div class="wrap">
   <header>
-    <img src="icons/icon48.png" alt="">
+    <img src="icons/hot48.png" alt="" data-icon-size="44" data-icon-prefix="hot">
     <div>
       <h1>设置</h1>
       <div class="sub">Pickcat 通知助手 <span id="ver"></span> · <a class="repo" href="https://github.com/Yu-pickcat/pickcat-notify" target="_blank" rel="noopener">GitHub 仓库</a></div>

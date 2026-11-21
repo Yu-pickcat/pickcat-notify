@@ -3,14 +3,7 @@
 <head>
 <meta charset="utf-8">
 <link rel="stylesheet" href="ui.css">
-<script>
-  /* 弹窗宽度跟着屏幕走：大屏不挤成一条窄条，小屏仍保持 336 */
-  (function () {
-    var w = (window.screen && (window.screen.availWidth || window.screen.width)) || 1440;
-    var pw = w >= 2560 ? 460 : (w >= 1920 ? 408 : (w >= 1600 ? 372 : 336));
-    document.documentElement.style.setProperty('--pw', pw + 'px');
-  })();
-</script>
+<script src="shell.js"></script>
 <style>
   body { width: var(--pw, 336px); }
   .wrap { padding: 14px 16px 12px; }
@@ -153,7 +146,7 @@
 <body>
 <div class="wrap">
   <header>
-    <img src="icons/icon32.png" alt="">
+    <img src="icons/icon32.png" alt="" data-icon-size="24" data-icon-prefix="icon">
     <div>
       <div class="brand-name">Pickcat 通知</div>
       <div class="brand-sub">关掉网页也能收到 · <span id="ver"></span></div>

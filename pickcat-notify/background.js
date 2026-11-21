@@ -1074,6 +1074,24 @@ chrome.notifications.onButtonClicked.addListener(async function (id, index) {
   try { await chrome.notifications.clear(id); } catch (e) { /* 通知已消失 */ }
 });
 
+/* 每个版本到底改了什么：升级提示里直接列出来，不再写空话 */
+const UPDATE_NOTES = {
+  '2.6.1': [
+    '设置页图标换成带红块那版，内容宽度跟屏幕走',
+    '弹窗宽度、页面图标按屏幕和缩放实时挑档，高分屏不糊',
+    '升级提示改成列出这一版的具体改动'
+  ],
+  '2.6.0': [
+    '图标换成官网 logo 里的 C，右下角斜块变红＝有未读',
+    '数字角标默认关闭，不再压住图标',
+    '看过的动态点开就从列表撤掉'
+  ],
+  '2.5.0': [
+    '界面照官网重做',
+    '图标重画，底色改成超椭圆'
+  ]
+};
+
 /* 升级后弹一次提示，同一个版本只弹一次（参考 PickScribe 的 showUpdateNotice） */
 async function showUpdateNotice() {
   const mf = chrome.runtime.getManifest();
@@ -1082,11 +1100,18 @@ async function showUpdateNotice() {
   const got = await chrome.storage.local.get('updateNotice');
   if (got.updateNotice === ver) return;
   await chrome.storage.local.set({ updateNotice: ver });
+  const notes = UPDATE_NOTES[ver] || [];
+  let body;
+  if (notes.length) {
+    body = '这版改了什么：\n' + notes.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n');
+  } else {
+    body = '这版有改动，点「看看更新内容」可以看完整说明。';
+  }
   chrome.notifications.create('pickcat-update-' + ver, {
     type: 'basic',
     iconUrl: chrome.runtime.getURL(ICON_PATH),
     title: 'Pickcat 通知已更新到 ' + name,
-    message: '看看这次改了什么？可以和 PICKCAT Plus、PickScribe 同时安装。',
+    message: body,
     contextMessage: 'Pickcat 通知助手',
     buttons: [{ title: '看看更新内容' }, { title: '以后再说' }],
     priority: 1
