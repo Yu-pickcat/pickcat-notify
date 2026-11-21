@@ -315,7 +315,7 @@ if (el.updDo) {
       return;
     }
     if (r.hasNew) {
-      updLatest = r.url || ('https://github.com/Yu-pickcat/pickcat-notify/releases/tag/v' + r.latest + '-beta');
+      updLatest = r.url || ('https://github.com/Yu-pickcat/pickcat-notify/releases/tag/v' + r.latest);
       el.updDo.textContent = '有新版 v' + r.latest + ' · 去下载';
       el.updDo.classList.add('new');
       return;

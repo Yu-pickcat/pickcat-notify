@@ -20,13 +20,6 @@
   .sub { color: var(--faint); font-size: 11.5px; margin-top: 1px; }
   .sub a.repo { color: var(--muted); text-decoration: none; }
   .sub a.repo:hover { text-decoration: underline; color: var(--brand); }
-  .head-tag {
-    margin-left: auto; flex: none;
-    padding: 3px 9px; border-radius: var(--r-chip);
-    border: 1px solid var(--line); background: var(--bg);
-    color: var(--muted); font-size: 11px; white-space: nowrap;
-  }
-
   .card { padding: 16px 18px; margin-bottom: 12px; }
 
   .diag { font-size: 12.5px; line-height: 2; color: var(--ink-2); }
@@ -58,7 +51,6 @@
       <h1>设置</h1>
       <div class="sub">Pickcat 通知助手 <span id="ver"></span> · <a class="repo" href="https://github.com/Yu-pickcat/pickcat-notify" target="_blank" rel="noopener">GitHub 仓库</a></div>
     </div>
-    <span class="head-tag">只在本机读取</span>
   </header>
 
   <div class="card">
@@ -213,7 +205,7 @@
   <div class="card">
     <div class="sec-title">版本与更新</div>
     <div class="row row-col">
-      <div class="row-label">当前版本 <b id="verNow">V2.4.7 beta</b></div>
+      <div class="row-label">当前版本 <b id="verNow"></b></div>
       <div class="row-desc upd-line"><span class="dot" id="updDot"></span><span class="upd-status" id="updStatus">解压加载的扩展不会自动更新，可以在这里手动查一次</span></div>
       <div class="btns" style="margin-top:10px">
         <button class="btn btn-ghost" id="checkUpdate">检查更新</button>
