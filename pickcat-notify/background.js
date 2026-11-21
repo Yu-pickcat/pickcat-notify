@@ -38,6 +38,14 @@ const EMPTY_STATE = {
 const REPO = 'Yu-pickcat/pickcat-notify';
 const RELEASES_API = 'https://api.github.com/repos/' + REPO + '/releases?per_page=5';
 const RELEASE_PAGE = 'https://github.com/' + REPO + '/releases/tag/';
+/* 版本号 → Release 页地址。tag 一律小写 v 前缀（version 只有三段数字），
+   直接拼 version 会得到 /releases/tag/2.6.4 这种不存在的地址，点开就是 404 */
+function releaseUrl(ver) {
+  var t = String(ver || '').trim();
+  if (t.charAt(0) === 'V') t = 'v' + t.slice(1);
+  else if (t.charAt(0) !== 'v') t = t ? 'v' + t : '';
+  return t ? RELEASE_PAGE + encodeURIComponent(t) : 'https://github.com/' + REPO + '/releases';
+}
 /* 直连 raw.githubusercontent 最快也最新（GitHub 自己的文件），jsDelivr 只是备用：
    在国内网络里 jsDelivr 偶尔整段不可用，实测浏览器里会直接 Failed to fetch */
 const MANIFEST_SOURCES = [
@@ -179,7 +187,7 @@ async function fetchLatestVersion() {
         return {
           version: ver,
           tag: list[0].tag_name,
-          url: list[0].html_url || (RELEASE_PAGE + encodeURIComponent(list[0].tag_name))
+          url: list[0].html_url || releaseUrl(list[0].tag_name)
         };
       }
     }
@@ -1051,7 +1059,7 @@ chrome.notifications.onClicked.addListener(async function (id) {
   }
   /* 升级提示：点正文直接去看更新内容 */
   if (id.indexOf('pickcat-update-') === 0) {
-    openTab(RELEASE_PAGE + encodeURIComponent(id.slice('pickcat-update-'.length)));
+    openTab(releaseUrl(id.slice('pickcat-update-'.length)));
     return;
   }
   /* 单条新消息的通知 id 就是这条消息的 id，直达链接存在 storage 的 pending 里；
@@ -1070,12 +1078,16 @@ chrome.notifications.onClicked.addListener(async function (id) {
 chrome.notifications.onButtonClicked.addListener(async function (id, index) {
   if (id.indexOf('pickcat-update-') !== 0) return;
   const ver = id.slice('pickcat-update-'.length);
-  if (index === 0) openTab(RELEASE_PAGE + encodeURIComponent(ver));
+  if (index === 0) openTab(releaseUrl(ver));
   try { await chrome.notifications.clear(id); } catch (e) { /* 通知已消失 */ }
 });
 
 /* 每个版本到底改了什么：升级提示里直接列出来，不再写空话 */
 const UPDATE_NOTES = {
+  '2.6.6': [
+    '修掉更新提示点开就 404：Release 地址补上了 tag 的 v 前缀',
+    '更新提示、设置页检查更新用的是同一个地址生成方式'
+  ],
   '2.6.5': [
     '图标按官网原图重新量的：右上那条起笔斜边改成真直线',
     '直边统一用直线，圆角用切线连续的曲线，边缘不再有起伏'
