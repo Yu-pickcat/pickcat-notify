@@ -312,6 +312,16 @@ function setUpdLook(dot, status) {
   if (el.updStatus) el.updStatus.className = 'upd-status' + (status ? ' ' + status : '');
 }
 
+/* 上次检查离现在多久：让卡片上有个时间锚点，不用再猜结果是不是很久以前的 */
+function agoText(t) {
+  if (!t) return '';
+  const d = Date.now() - t;
+  if (d < 60 * 1000) return '刚刚';
+  if (d < 60 * 60 * 1000) return Math.round(d / 60000) + ' 分钟前';
+  if (d < 24 * 60 * 60 * 1000) return Math.round(d / 3600000) + ' 小时前';
+  return Math.round(d / 86400000) + ' 天前';
+}
+
 function paintUpdate() {
   if (!updateState) {
     setUpdLook('', '');
@@ -338,14 +348,15 @@ function paintUpdate() {
   }
   if (r.hasNew) {
     setUpdLook('', 'new');
-    el.updStatus.textContent = '🎉 有新版本 v' + r.latest + ' 可用（当前 v' + r.local + '）';
+    el.updStatus.textContent = '有新版本 v' + r.latest + ' 可用（当前 v' + r.local + '）'
+      + (r.cached && agoText(r.at) ? ' · ' + agoText(r.at) + '查过' : '');
     el.checkUpdate.textContent = '再检查一次';
     el.goDownload.style.display = '';
     return;
   }
   setUpdLook('ok', '');
   el.updStatus.textContent = '已是最新版本（v' + r.local + '）'
-    + (r.cached ? ' · 结果来自缓存，6 小时内不重复联网' : '');
+    + (agoText(r.at) ? ' · ' + agoText(r.at) + '查过' : '');
   el.checkUpdate.textContent = '再检查一次';
   el.goDownload.style.display = 'none';
 }
