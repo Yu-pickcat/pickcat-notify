@@ -1,8 +1,8 @@
 # pickcat-notify
 
-Pickcat（pickcat.dao3.fun）社区消息通知助手 —— **网页关掉，也能收到谁赞了你**。
+pickcat（pickcat.dao3.fun）社区消息通知扩展 —— **网页关掉，也能收到谁赞了你**。
 
-作者：羽Yu ｜ 版本：V2.6.6
+作者：羽Yu ｜ 版本：V2.6.7
 
 ---
 
