@@ -99,12 +99,13 @@ function itemRow(it) {
   const row = document.createElement('div');
   row.className = 'feed-item';
 
-  /* 有帖子标识的动态，整行可点，直达对应帖子那一楼 */
-  if (it.topicId) {
+  /* 有帖子或作品标识的动态，整行可点，直达对应帖子那一楼 / 作品页那一条评论 */
+  if (it.topicId || it.workId) {
     row.className = 'feed-item clickable';
-    row.title = '查看帖子' + (it.floor ? '第 ' + it.floor + ' 楼' : '');
+    const where = it.workId ? '查看作品' : '查看帖子';
+    row.title = where + (it.floor ? '第 ' + it.floor + ' 楼' : '');
     row.addEventListener('click', function () {
-      send({ type: 'PC_OPEN_POST', topicId: it.topicId, floor: it.floor, category: it.category, actor: it.actor, ts: it.ts });
+      send({ type: 'PC_OPEN_POST', topicId: it.topicId, workId: it.workId, floor: it.floor, category: it.category, actor: it.actor, ts: it.ts });
       /* 看过的这条立刻从列表撤掉，不等下一次检查 */
       lastRecent = lastRecent.filter(function (x) { return x !== it; });
       markChips();

@@ -685,16 +685,22 @@ function normalizeItem(it) {
   const topicObj = d.topic || {};
   const postObj = d.post || {};
   const commentObj = d.comment || {};
+  /* 作品类通知（被赞、被评论、作品评论被赞/被回复）带的是 work 对象，
+     帖子和评论区这两种走 topic/post，字段互不相同，这里各取各的 */
+  const workObj = d.work || {};
 
   let excerpt = firstOf(d, ['excerpt', 'content', 'title', 'text', 'body']);
   if (!excerpt && commentObj) excerpt = firstOf(commentObj, ['excerpt', 'content', 'body']);
   if (!excerpt && topicObj) excerpt = firstOf(topicObj, ['title', 'excerpt', 'content']);
   if (!excerpt && postObj) excerpt = firstOf(postObj, ['title', 'excerpt', 'content']);
+  if (!excerpt && workObj) excerpt = firstOf(workObj, ['workName', 'title', 'excerpt', 'name']);
 
-  const topicTitle = flat(firstOf(topicObj, ['title']), 60);
-  const floor = Number(postObj.postNumber) || 0;
+  const topicTitle = flat(firstOf(topicObj, ['title']) || firstOf(workObj, ['workName', 'title', 'name']), 60);
+  /* 帖子楼层是 post.postNumber，作品评论楼层是 comment.commentNumber，两者互斥 */
+  const floor = Number(postObj.postNumber) || Number(commentObj.commentNumber) || 0;
   const postId = postObj.id || '';
   const topicId = topicObj.id || '';
+  const workId = workObj.id || firstOf(d, ['workId']) || '';
   const actorId = actorObj.id || '';
 
   const action = TYPE_ACTION[it.type] || '有新消息';
@@ -714,6 +720,7 @@ function normalizeItem(it) {
     floor: floor,
     postId: postId,
     topicId: topicId,
+    workId: workId,
     read: isRead,
     ts: ts
   };
@@ -737,12 +744,15 @@ function topicLine(i) {
   return s;
 }
 
-/* 点开后直达对应帖子：优先主题 id 拼线程链接；带楼号时加 #post-<楼号> 锚点。
-   站点自己的通知链接就是这个格式（消息中心里回复通知指向 /forum/post/<topicId>#post-<postNumber>），
+/* 点开后直达对应内容：站点自己的通知链接就是这两种拼法（前端 buildNotificationLink 同样逻辑）——
+   作品通知走 /works/<作品 id>，带评论楼号时加 #post-<评论楼号>；
+   帖子通知走 /forum/post/<主题 id>，带楼号时加 #post-<楼号>。
    页面加载后会自己滚动定位到那一楼，实测有效；评论 id 的 UUID 形式站点不识别，不要用它 */
 function linkFor(i) {
+  const work = (i && i.workId) || '';
   const topic = (i && i.topicId) || '';
   const floor = Number(i && i.floor) || 0;
+  if (work) return BASE + '/works/' + work + (floor > 0 ? '#post-' + floor : '');
   if (topic) return BASE + '/forum/post/' + topic + (floor > 0 ? '#post-' + floor : '');
   return BASE + '/notifications';
 }
@@ -781,7 +791,7 @@ function noteText(count, items, delta, max) {
 /* 弹窗里显示的最近动态，条数跟随「通知里最多列几条」设置（1～5）
    已经点开看过的消息不再回来：用一条稳定 key 记住，下轮检查时直接滤掉 */
 function itemKey(i) {
-  return [i.category || '', i.actor || '', i.ts || '', i.postId || i.topicId || '', i.floor || ''].join('|');
+  return [i.category || '', i.actor || '', i.ts || '', i.postId || i.topicId || i.workId || '', i.floor || ''].join('|');
 }
 
 function recentFor(items, max, readSeen) {
@@ -801,7 +811,8 @@ function recentFor(items, max, readSeen) {
       floor: i.floor,
       ts: i.ts,
       postId: i.postId,
-      topicId: i.topicId
+      topicId: i.topicId,
+      workId: i.workId
     };
   });
 }
@@ -1084,6 +1095,11 @@ chrome.notifications.onButtonClicked.addListener(async function (id, index) {
 
 /* 每个版本到底改了什么：升级提示里直接列出来，不再写空话 */
 const UPDATE_NOTES = {
+  '2.6.8': [
+    '修掉作品类通知点开没反应：被赞、被评论、作品评论被赞/被回复，现在直接打开作品页',
+    '作品页地址按站点自己的规则拼：/works/作品id，带评论就落到那一条（#post-楼号）',
+    '通知正文补上作品名，不再只剩一句「点开消息中心看详情」'
+  ],
   '2.6.7': [
     '扩展名统一成「pickcat 通知」，和弹窗、设置页、系统通知保持一致',
     '页面标题、通知正文里的旧名字一起换掉'
@@ -1259,12 +1275,12 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   }
 
   if (msg.type === 'PC_OPEN_POST') {
-    openTab(linkFor({ topicId: msg.topicId, floor: msg.floor }));
+    openTab(linkFor({ topicId: msg.topicId, workId: msg.workId, floor: msg.floor }));
     /* 点开看过的这条，立刻从「最近动态」里撤掉，下次检查也不再冒出来 */
     (async function () {
       try {
         const s = await st();
-        const key = itemKey({ category: msg.category, actor: msg.actor, ts: msg.ts, postId: msg.topicId, floor: msg.floor });
+        const key = itemKey({ category: msg.category, actor: msg.actor, ts: msg.ts, postId: msg.postId, topicId: msg.topicId, workId: msg.workId, floor: msg.floor });
         const readSeen = (Array.isArray(s.readSeen) ? s.readSeen : []).concat([key]).slice(-300);
         const recent = (Array.isArray(s.recent) ? s.recent : []).filter(function (x) { return itemKey(x) !== key; });
         await saveSt({ readSeen: readSeen, recent: recent });
