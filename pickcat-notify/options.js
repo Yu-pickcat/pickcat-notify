@@ -24,6 +24,7 @@ const el = {
   modeDesc: document.getElementById('modeDesc'),
   maxSeg: document.getElementById('maxSeg'),
   swNotify: document.getElementById('swNotify'),
+  swSiteSkin: document.getElementById('swSiteSkin'),
   swBadge: document.getElementById('swBadge'),
   swSound: document.getElementById('swSound'),
   swMention: document.getElementById('swMention'),
@@ -76,11 +77,38 @@ function stepText(min) {
   return m < 1 ? Math.round(m * 60) + ' 秒' : Math.round(m) + ' 分钟';
 }
 
+/* 选中块滑过去而不是跳过去：一块红色药丸在槽里滑行。
+   槽本身能横向滚时不放滑块，否则滚起来会和按钮错位。 */
+function glideSeg(node) {
+  if (!node || !node.classList || !node.classList.contains('seg')) return;
+  const on = node.querySelector('button[data-on="1"]');
+  if (!on) return;
+  let glide = node.querySelector('.seg-glide');
+  if (!glide) {
+    glide = document.createElement('i');
+    glide.className = 'seg-glide';
+    node.insertBefore(glide, node.firstChild);
+  }
+  const scrollable = node.scrollWidth > node.clientWidth + 1;
+  glide.style.opacity = scrollable ? '0' : '1';
+  if (scrollable) return;
+  const sr = node.getBoundingClientRect();
+  const br = on.getBoundingClientRect();
+  if (!sr.width) return;
+  glide.style.left = ((br.left - sr.left) / sr.width * 100).toFixed(2) + '%';
+  glide.style.width = (br.width / sr.width * 100).toFixed(2) + '%';
+}
+
 function markSeg(node, val) {
   if (!node) return;
   Array.prototype.forEach.call(node.children, function (b) {
+    if (!b.dataset || b.dataset.v === undefined) return;
     b.setAttribute('data-on', String(b.dataset.v) === String(val) ? '1' : '0');
   });
+  glideSeg(node);
+  if (node && node.isConnected) {
+    window.requestAnimationFrame(function () { glideSeg(node); });
+  }
 }
 
 function renderSettings(s) {
@@ -98,6 +126,7 @@ function renderSettings(s) {
     : MODE_DESC[mode];
   el.notifyDeps.classList.toggle('off', !s.notify);
   el.swNotify.classList.toggle('on', !!s.notify);
+  el.swSiteSkin.classList.toggle('on', s.siteSkin !== false);
   el.swBadge.classList.toggle('on', !!s.badge);
   el.swSound.classList.toggle('on', !!s.sound);
   const nt = Object.assign({ mention: true, reply: true, like: true, follow: true, system: true }, s.notifyTypes || {});
@@ -191,6 +220,36 @@ function renderPick() {
   el.modeApply.textContent = pick.length === 3 ? '全勾了，就是智能' : (pick.length ? '用这套顺序' : '先勾一个');
 }
 
+/* 面板从「其他方式…」那个按钮的位置长出来：算出按钮相对屏幕中心的方向，
+   换算成位移和缩放原点，交给 CSS 跑那 0.46 秒 */
+function aimSheetFrom() {
+  const btn = el.modeOther;
+  const mask = el.modeMask;
+  if (!btn || !mask) return;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const b = btn.getBoundingClientRect();
+  let dx = (b.left + b.width / 2) - w / 2;
+  let dy = (b.top + b.height / 2) - h / 2;
+  const maxX = w * 0.30;
+  const maxY = h * 0.26;
+  if (dx > maxX) dx = maxX;
+  if (dx < -maxX) dx = -maxX;
+  if (dy > maxY) dy = maxY;
+  if (dy < -maxY) dy = -maxY;
+  const sw = Math.min(400, w - 44);
+  let ox = 50 + dx / sw * 100;
+  let oy = 50 + dy / (h * 0.55) * 55;
+  if (ox < 6) ox = 6;
+  if (ox > 94) ox = 94;
+  if (oy < 6) oy = 6;
+  if (oy > 94) oy = 94;
+  mask.style.setProperty('--mx', Math.round(dx) + 'px');
+  mask.style.setProperty('--my', Math.round(dy) + 'px');
+  mask.style.setProperty('--ox', Math.round(ox) + '%');
+  mask.style.setProperty('--oy', Math.round(oy) + '%');
+}
+
 function openMask() {
   const s = settings || {};
   const mode = s.mode || 'smart';
@@ -198,6 +257,7 @@ function openMask() {
   else if (mode === 'smart') pick = ['page', 'direct', 'window'];
   else pick = [mode];
   renderPick();
+  aimSheetFrom();
   el.modeMask.classList.add('show');
 }
 function closeMask() { el.modeMask.classList.remove('show'); }
@@ -233,7 +293,7 @@ el.maxSeg.addEventListener('click', function (e) {
   save({ notifyMax: Number(b.dataset.v) });
 });
 
-[['swNotify', 'notify'], ['swBadge', 'badge'], ['swSound', 'sound']]
+[['swNotify', 'notify'], ['swBadge', 'badge'], ['swSound', 'sound'], ['swSiteSkin', 'siteSkin']]
   .forEach(function (pair) {
     const node = el[pair[0]];
     node.addEventListener('click', function () {

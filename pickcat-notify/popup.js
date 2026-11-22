@@ -9,7 +9,7 @@ const el = {
   err: document.getElementById('err'),
   list: document.getElementById('list'),
   chips: document.getElementById('chips'),
-  intervalSeg: document.getElementById('intervalSeg'),
+  swSkin: document.getElementById('swSkin'),
   check: document.getElementById('check'),
   markAll: document.getElementById('markAll'),
   more: document.getElementById('more'),
@@ -190,20 +190,13 @@ function itemRow(it) {
   return row;
 }
 
-function markSeg(node, val) {
-  if (!node) return;
-  Array.prototype.forEach.call(node.children, function (b) {
-    b.setAttribute('data-on', String(b.dataset.v) === String(val) ? '1' : '0');
-  });
-}
-
 function render(payload) {
   const s = payload.settings || {};
   const state = payload.state || {};
   settings = s;
 
   el.sw.classList.toggle('on', !!s.enabled);
-  markSeg(el.intervalSeg, s.intervalMin || 1);
+  el.swSkin.classList.toggle('on', s.siteSkin !== false);
 
   const count = Number(state.unread) || 0;
   el.unread.textContent = count > 99 ? '99+' : String(count);
@@ -253,11 +246,10 @@ el.sw.addEventListener('click', async function () {
   render(resp);
 });
 
-el.intervalSeg.addEventListener('click', async function (e) {
-  const b = e.target.closest('button');
-  if (!b || !b.dataset.v) return;
-  markSeg(el.intervalSeg, b.dataset.v);
-  const resp = await send({ type: 'PC_SAVE', patch: { intervalMin: Number(b.dataset.v) } });
+el.swSkin.addEventListener('click', async function () {
+  const next = !el.swSkin.classList.contains('on');
+  el.swSkin.classList.toggle('on', next);
+  const resp = await send({ type: 'PC_SAVE', patch: { siteSkin: next } });
   render(resp);
 });
 

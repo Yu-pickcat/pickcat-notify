@@ -1,0 +1,277 @@
+/* Pickcat 站点皮肤 · 实底 + 原生模糊
+   ————————————————————————————————————————————————
+   思路：不做材质。一级内容（页面底色 / 列表卡片）全是实底，只靠"底色深浅差 + 1px 描边 + 圆角 + 留白"分层；
+   浮起来的三层（桌面顶栏 / 手机底栏 / 二级浮窗）才给浏览器原生 backdrop-filter 模糊 + 半透明。
+   没有渐变光、没有棱色、没有自造的折射环，模糊只是让背后的内容淡淡透出来。
+   桌面端只改上面那一栏，手机端只改下面那一栏，两端各管各的。
+   设置页「站点外观」可整层关掉。
+   ———————————————————————————————————————————————— */
+
+/* ---------- 1. 底色：纯色，不打光 ---------- */
+
+html.dark {
+  --ui-bg-muted: #0a0a0b;
+  --ui-card-translucent: #181819;
+  --ui-card-interactive: #1f2021;
+  --ui-border: rgba(255, 255, 255, .07);
+}
+
+html:not(.dark) {
+  --ui-bg-muted: #eef0f4;
+  --ui-card-translucent: #ffffff;
+  --ui-card-interactive: #f7f8fa;
+  --ui-border: rgba(17, 19, 26, .07);
+}
+
+/* 站点原来在铺满全屏那层打过三团 radial 光，整页泛色就是它，直接清掉 */
+.bg-muted {
+  background-image: none !important;
+  background-color: #0a0a0b !important;
+}
+
+html:not(.dark) .bg-muted {
+  background-color: #eef0f4 !important;
+}
+
+/* ---------- 2. 圆角：跟扩展同一把尺子 ---------- */
+
+.rounded-xl { border-radius: 18px; }
+.rounded-lg { border-radius: 14px; }
+.rounded-md { border-radius: 10px; }
+.rounded-sm { border-radius: 8px; }
+
+/* ---------- 3. 一层：卡片实底 ---------- */
+
+[class*="bg-(--ui-card-translucent)"] {
+  position: relative;
+  transition: background-color .22s linear, box-shadow .22s linear, scale .16s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+html.dark [class*="bg-(--ui-card-translucent)"] {
+  background-color: #181819 !important;
+  background-image: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06) !important;
+}
+
+html.dark [class*="bg-(--ui-card-translucent)"]:hover {
+  background-color: #1f2021 !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .10) !important;
+}
+
+html:not(.dark) [class*="bg-(--ui-card-translucent)"] {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: inset 0 0 0 1px rgba(17, 19, 26, .06) !important;
+}
+
+/* 整块可点，给个指针提示 */
+article {
+  cursor: pointer;
+}
+
+/* ---------- 4. 结构层 ----------
+   顶栏/底栏的几何（top / 圆角 / 底色 / 模糊）由 content.js 落内联，样式表压不动 Tailwind v4 的 layer，
+   这里只留一件事：移动端浮窗别顶到屏幕边。 */
+@media (max-width: 1023px) {
+  [class*="reka-popover-content-transform-origin"],
+  [class*="reka-dialog-content"],
+  [class*="reka-dropdown-menu-content"] {
+    max-width: calc(100vw - 20px) !important;
+  }
+}
+
+/* 帖子页拿封面图放大了 110% 再 blur 一整层当氛围底（blur 24px + 55% 不透明），
+   整页泛色、字发灰就是这一层，关掉。封面主图本身不受影响。 */
+[class*="blur-xl"][class*="scale-110"] {
+  opacity: 0 !important;
+}
+
+/* 顶栏 tab 的滑块：同一颗弹簧 */
+[class*="transition-[translate,width]"] {
+  border-radius: 10px;
+  transition:
+    translate .30s cubic-bezier(.34, 1.56, .64, 1),
+    width .30s cubic-bezier(.34, 1.56, .64, 1) !important;
+}
+
+/* 列表换页时卡片淡着上来 */
+@keyframes pcl-fade {
+  from { opacity: 0; translate: 0 6px; }
+  to { opacity: 1; translate: none; }
+}
+
+article {
+  animation: pcl-fade .28s cubic-bezier(.22, .9, .28, 1) both;
+}
+
+/* ---------- 5. 点按回弹 ----------
+   卡片按下去只压暗底色，不做整块缩放——大卡片一缩就像整页在往下沉；
+   按钮、页签这种小件才缩一下，松手都弹回。 */
+
+[class*="bg-(--ui-card-translucent)"]:active {
+  background-color: #1f2021 !important;
+}
+
+html:not(.dark) [class*="bg-(--ui-card-translucent)"]:active {
+  background-color: #f7f8fa !important;
+}
+
+button,
+a,
+[role="button"] {
+  transition: scale .18s cubic-bezier(.34, 1.56, .64, 1), opacity .16s linear;
+}
+
+button:active,
+a:active,
+[role="button"]:active {
+  scale: .96;
+}
+
+/* 顶栏里的页签、图标按钮，按下去给一层底 */
+header a:active,
+header button:active {
+  background-color: rgba(255, 255, 255, .08) !important;
+}
+
+html:not(.dark) header a:active,
+html:not(.dark) header button:active {
+  background-color: rgba(17, 19, 26, .06) !important;
+}
+
+/* 输入框 */
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background-color: rgba(255, 255, 255, .05) !important;
+  border-color: rgba(255, 255, 255, .10) !important;
+  border-radius: 10px !important;
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(240, 51, 44, .20);
+  border-color: rgba(240, 51, 44, .45) !important;
+}
+
+/* ---------- 6. 二层：二级窗口实底 ----------
+   只挑真正浮起来的那个面（popover / dialog / 菜单面板），不给全屏包裹层铺底色。 */
+
+.pcl-sheet [class*="bg-(--ui-card-translucent)"],
+.pcl-sheet[class*="bg-(--ui-card-translucent)"],
+[class*="reka-popover-content-transform-origin"],
+[class*="reka-dialog-content"],
+[class*="reka-dropdown-menu-content"] {
+  background-color: rgba(52, 53, 56, .76) !important;
+  background-image: none !important;
+  -webkit-backdrop-filter: blur(36px) saturate(1.2) !important;
+  backdrop-filter: blur(36px) saturate(1.2) !important;
+  border-radius: 24px !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .11),
+    0 22px 48px -28px rgba(0, 0, 0, .92) !important;
+}
+
+html:not(.dark) .pcl-sheet [class*="bg-(--ui-card-translucent)"],
+html:not(.dark) .pcl-sheet[class*="bg-(--ui-card-translucent)"],
+html:not(.dark) [class*="reka-popover-content-transform-origin"],
+html:not(.dark) [class*="reka-dialog-content"],
+html:not(.dark) [class*="reka-dropdown-menu-content"] {
+  background-color: rgba(255, 255, 255, .82) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(1.55) !important;
+  backdrop-filter: blur(32px) saturate(1.55) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(17, 19, 26, .08),
+    0 24px 48px -28px rgba(19, 21, 30, .5) !important;
+}
+
+/* ---------- 7. 窗口过渡：从点下去那个位置长出来 ----------
+   --pcl-ox / --pcl-oy / --pcl-mx / --pcl-my 由 content.js 按点击点算好写进来。
+   只动 scale / translate / opacity，不接管站点自己的 transform。 */
+
+@keyframes pcl-pop {
+  from {
+    opacity: 0;
+    scale: .94;
+  }
+  to { opacity: 1; scale: 1; }
+}
+
+@keyframes pcl-veil-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.pcl-sheet {
+  transform-origin: var(--pcl-ox, 50%) var(--pcl-oy, 40%);
+  animation: pcl-pop .46s cubic-bezier(.34, 1.56, .64, 1) .14s both !important;
+}
+
+/* 大半屏的大模态（等级成长、设置这类）：只淡入上浮一点点，不从角落张开 */
+@keyframes pcl-rise {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.pcl-sheet.pcl-sheet-lg {
+  animation: pcl-rise .32s cubic-bezier(.22, .9, .28, 1) .10s both !important;
+}
+
+/* 菜单是"展开"不是"登场"，更快、更贴触发点 */
+.pcl-sheet[role="menu"],
+[role="menu"].pcl-sheet {
+  animation-duration: .34s !important;
+  animation-delay: .06s !important;
+}
+
+.pcl-veil {
+  animation: pcl-veil-in .30s cubic-bezier(.22, .9, .28, 1) both !important;
+}
+
+/* ---------- 8. 原生面统一 ----------
+   站点自己还有几层中性灰：卡片用的 bg-default、页面底条用的 bg-(--ui-bg-shell)、
+   资料卡 desktop 下那层。它们跟一级卡不是同一个色，挨在一起就是"两种灰拼一块"。
+   这里全归到一级卡的色上，只靠深浅和描边分层，不再出现第二种灰。 */
+[class*="bg-default"]:not(html):not(body),
+footer[class] {
+  background-color: var(--ui-card-translucent) !important;
+  background-image: none !important;
+}
+
+/* 卡片底色统一了，hover 也统一跟着走，别一边变一边不变 */
+[class*="bg-default"][class*="hover:bg-"] {
+  transition: background-color .18s var(--ease) !important;
+}
+
+/* 顶栏/底栏里那层"铺满 + 自己再 blur 一次"的底，会把半透明的栏糊成实色，
+   模糊也就看不出来了。把它交还给栏本体，只留一份半透明 + 一份模糊。 */
+header [class*="bg-(--ui-bg-shell)"],
+[class*="fixed"][class*="bottom-0"] [class*="bg-(--ui-bg-shell)"] {
+  background-color: transparent !important;
+  background-image: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* ---------- 9. 滚动条 ---------- */
+
+* { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .14) transparent; }
+
+html:not(.dark) * { scrollbar-color: rgba(17, 19, 26, .18) transparent; }
+
+/* ---------- 10. 页面过渡 ----------
+   首页点帖子/作品，共享元素从卡片放大到帖子页标题，其余部分淡入淡出。 */
+::view-transition-group(postcard) {
+  animation-duration: .42s;
+  animation-timing-function: cubic-bezier(.22, .9, .28, 1);
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: .30s;
+}

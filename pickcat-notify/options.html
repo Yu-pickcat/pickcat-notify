@@ -6,22 +6,26 @@
 <link rel="stylesheet" href="ui.css">
 <script src="shell.js"></script>
 <style>
-  body { padding: 22px 24px 30px; }
+  body { padding: 22px 24px 34px; }
   .wrap { max-width: min(1080px, 92vw); margin: 0 auto; }
 
   header {
+    position: relative;
+    isolation: isolate;
     display: flex; align-items: center; gap: 11px;
-    margin-bottom: 12px; padding: 13px 16px;
+    margin-bottom: 13px; padding: 14px 17px;
     background: var(--surface);
-    border: 1px solid var(--line);
+    border: 1px solid var(--glass-border);
     border-radius: var(--r-card);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
   }
-  header img { width: 44px; height: 44px; border-radius: 12px; }
-  h1 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -.015em; }
-  .sub { color: var(--faint); font-size: 11.5px; margin-top: 1px; }
-  .sub a.repo { color: var(--muted); text-decoration: none; }
+  header img { position: relative; width: 46px; height: 46px; border-radius: var(--r-icon); }
+  h1 { position: relative; margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -.015em; }
+  .sub { position: relative; color: var(--faint); font-size: 11.5px; margin-top: 1px; }
+  .sub a.repo { color: var(--muted); text-decoration: none; transition: color .16s var(--ease); }
   .sub a.repo:hover { text-decoration: underline; color: var(--brand); }
-  .card { padding: 16px 18px; margin-bottom: 12px; }
+  .card { padding: 17px 19px; margin-bottom: 13px; }
 
   .diag { font-size: 12.5px; line-height: 2; color: var(--ink-2); }
   .diag .k { color: var(--faint); margin-right: 7px; }
@@ -37,13 +41,15 @@
   .dnd.show { display: flex; }
 
   .kw {
-    width: 100%; max-width: 430px; padding: 8px 11px;
-    border: 1px solid var(--line); border-radius: 10px;
-    background: var(--surface); color: var(--ink);
+    width: 100%; max-width: 430px; padding: 8px 12px;
+    border: 1px solid var(--line); border-radius: var(--r-ctl);
+    background: var(--surface-solid); color: var(--ink);
     font: inherit; font-size: 12.5px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .06);
+    transition: border-color .16s var(--ease), box-shadow .16s var(--ease);
   }
   .kw::placeholder { color: var(--faint); }
-  .kw:focus { outline: none; border-color: var(--brand); }
+  .kw:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
 
   .upd-line { display: flex; align-items: center; }
   .upd-status { line-height: 1.6; }
@@ -86,6 +92,17 @@
         </div>
         <button class="btn btn-ghost btn-sm" id="modeOther">其他方式…</button>
       </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="sec-title">站点外观</div>
+    <div class="row">
+      <div>
+        <div class="row-label">Pickcat 网页跟着一起换</div>
+        <div class="row-desc">把 pickcat.dao3.fun 的底色、卡片、悬浮顶栏和底栏、二级浮窗都换成同一套；关掉就回到官网原样</div>
+      </div>
+      <div class="switch" id="swSiteSkin"><div class="knob"></div></div>
     </div>
   </div>
 

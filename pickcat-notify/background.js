@@ -22,7 +22,9 @@ const DEFAULTS = {
   keywords: [],
   dndEnabled: false,
   dndStart: '22:30',
-  dndEnd: '07:00'
+  dndEnd: '07:00',
+  /* 站点外观：给 pickcat.dao3.fun 套同一套皮肤；关掉就是官网原样 */
+  siteSkin: true
 };
 
 const EMPTY_STATE = {
@@ -1139,6 +1141,13 @@ chrome.notifications.onButtonClicked.addListener(async function (id, index) {
 
 /* 每个版本到底改了什么：升级提示里直接列出来，不再写空话 */
 const UPDATE_NOTES = {
+  '2.8.0': [
+    '外观整套换掉：三页和 Pickcat 网页统一成墨底 + 连续圆角，一级内容纯实底，只有浮起来的顶栏、底栏、浮窗才用浏览器原生模糊',
+    '设置页多了「站点外观」开关：不想让网页跟着变，一个开关就回到官网原样，开了关了当场生效',
+    '点开帖子、作品会从卡片平滑过渡到详情页；整卡都能点进去，头像、名字、标签仍走各自的目标',
+    '修掉点哪儿都跳帖子：现在只有落在帖子卡片上才跳，点空白、点正文、点按钮都不再乱开',
+    '弹窗改成从你点的位置长出来；等级页那种大窗口改成淡入上浮，不再从左上角炸开'
+  ],
   '2.7.0': [
     '「新增关注」从系统通知里拆成单独一档：只想收新粉丝、不想被管理处罚那类打扰，现在能分开设',
     '加了关注关键词：标题、摘要或作者名里的词一命中就一定弹，无视类型开关，通知标题前面带「关注提醒」',
@@ -1284,6 +1293,9 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
           seen[k.toLowerCase()] = 1;
           return true;
         }).slice(0, 10);
+      }
+      if (msg.patch && msg.patch.siteSkin != null) {
+        next.siteSkin = !!msg.patch.siteSkin;
       }
       if (msg.patch && Array.isArray(msg.patch.chain)) {
         const all = ['page', 'direct', 'window'];
