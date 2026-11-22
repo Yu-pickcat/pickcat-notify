@@ -40,7 +40,7 @@ function initial(name) {
   return s ? s.slice(0, 1).toUpperCase() : '·';
 }
 
-const CAT_NAME = { mention: '@我', reply: '回复', like: '赞', system: '系统' };
+const CAT_NAME = { mention: '@我', reply: '回复', like: '赞', follow: '关注', system: '系统' };
 
 /* 最近一次拿到的动态 + 当前筛选（重开弹窗还记着上次选的分类） */
 let lastRecent = [];
@@ -152,7 +152,13 @@ function itemRow(it) {
   } else {
     t.textContent = it.action || '有新动态';
   }
-  if (it.category && CAT_NAME[it.category]) {
+  /* 命中关注关键词的那条标「关注」，比标它原本的类别更有用 */
+  if (it.watch) {
+    const tag = document.createElement('span');
+    tag.className = 'cat';
+    tag.textContent = '关注';
+    t.appendChild(tag);
+  } else if (it.category && CAT_NAME[it.category]) {
     const tag = document.createElement('span');
     tag.className = 'cat';
     tag.textContent = CAT_NAME[it.category];

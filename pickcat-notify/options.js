@@ -29,7 +29,9 @@ const el = {
   swMention: document.getElementById('swMention'),
   swReply: document.getElementById('swReply'),
   swLike: document.getElementById('swLike'),
+  swFollow: document.getElementById('swFollow'),
   swSystem: document.getElementById('swSystem'),
+  kwInput: document.getElementById('kwInput'),
   swDnd: document.getElementById('swDnd'),
   dndBox: document.getElementById('dndBox'),
   dndStart: document.getElementById('dndStart'),
@@ -98,11 +100,13 @@ function renderSettings(s) {
   el.swNotify.classList.toggle('on', !!s.notify);
   el.swBadge.classList.toggle('on', !!s.badge);
   el.swSound.classList.toggle('on', !!s.sound);
-  const nt = Object.assign({ mention: true, reply: true, like: true, system: true }, s.notifyTypes || {});
+  const nt = Object.assign({ mention: true, reply: true, like: true, follow: true, system: true }, s.notifyTypes || {});
   el.swMention.classList.toggle('on', nt.mention !== false);
   el.swReply.classList.toggle('on', nt.reply !== false);
   el.swLike.classList.toggle('on', nt.like !== false);
+  el.swFollow.classList.toggle('on', nt.follow !== false);
   el.swSystem.classList.toggle('on', nt.system !== false);
+  el.kwInput.value = (Array.isArray(s.keywords) ? s.keywords : []).join(', ');
   el.swDnd.classList.toggle('on', !!s.dndEnabled);
   el.dndBox.classList.toggle('show', !!s.dndEnabled);
   el.dndStart.value = s.dndStart || '22:30';
@@ -241,18 +245,29 @@ el.maxSeg.addEventListener('click', function (e) {
     });
   });
 
-/* 四类消息单独开 / 关 */
-[['swMention', 'mention'], ['swReply', 'reply'], ['swLike', 'like'], ['swSystem', 'system']]
+/* 五类消息单独开 / 关 */
+[['swMention', 'mention'], ['swReply', 'reply'], ['swLike', 'like'], ['swFollow', 'follow'], ['swSystem', 'system']]
   .forEach(function (pair) {
     const node = el[pair[0]];
     node.addEventListener('click', function () {
       const next = !node.classList.contains('on');
       node.classList.toggle('on', next);
-      const nt = Object.assign({ mention: true, reply: true, like: true, system: true }, (settings && settings.notifyTypes) || {});
+      const nt = Object.assign({ mention: true, reply: true, like: true, follow: true, system: true }, (settings && settings.notifyTypes) || {});
       nt[pair[1]] = next;
       save({ notifyTypes: nt });
     });
   });
+
+/* 关注关键词：失焦或回车时统一按分隔符切开再存，不在输入过程中打断你打字 */
+function saveKeywords() {
+  const raw = String(el.kwInput.value || '');
+  const words = raw.split(/[,，;；\n]+/).map(function (k) { return k.trim(); });
+  save({ keywords: words });
+}
+el.kwInput.addEventListener('change', saveKeywords);
+el.kwInput.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { e.preventDefault(); saveKeywords(); el.kwInput.blur(); }
+});
 
 el.swDnd.addEventListener('click', function () {
   const next = !el.swDnd.classList.contains('on');

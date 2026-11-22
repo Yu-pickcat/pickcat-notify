@@ -36,6 +36,15 @@
   .dnd { display: none; align-items: center; gap: 8px; padding: 3px 0 11px; color: var(--muted); font-size: 12px; }
   .dnd.show { display: flex; }
 
+  .kw {
+    width: 100%; max-width: 430px; padding: 8px 11px;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: var(--surface); color: var(--ink);
+    font: inherit; font-size: 12.5px;
+  }
+  .kw::placeholder { color: var(--faint); }
+  .kw:focus { outline: none; border-color: var(--brand); }
+
   .upd-line { display: flex; align-items: center; }
   .upd-status { line-height: 1.6; }
   .upd-status.new { color: var(--ink); font-weight: 600; }
@@ -162,10 +171,22 @@
     </div>
     <div class="row">
       <div>
+        <div class="row-label">新增关注</div>
+        <div class="row-desc">有人关注你，点通知直接进对方主页</div>
+      </div>
+      <div class="check" id="swFollow"></div>
+    </div>
+    <div class="row">
+      <div>
         <div class="row-label">系统通知</div>
-        <div class="row-desc">谁关注了你、管理通知、等级认证、申诉结果、关注帖动态</div>
+        <div class="row-desc">管理通知、等级认证、申诉结果、关注帖动态</div>
       </div>
       <div class="check" id="swSystem"></div>
+    </div>
+    <div class="row row-col">
+      <div class="row-label">关注关键词</div>
+      <div class="row-desc">标题、摘要或作者名里出现这些词就一定弹，无视上面的开关；用逗号隔开，最多 10 个</div>
+      <input class="kw" id="kwInput" type="text" placeholder="比如：我的连载帖, 某个作者">
     </div>
     <div class="row">
       <div class="row-label">免打扰时段</div>

@@ -2,7 +2,9 @@
 
 const BASE = 'https://pickcat.dao3.fun';
 const API_SUMMARY = BASE + '/api/v1/notification-summary';
-const API_LIST = BASE + '/api/v1/notifications?limit=5';
+/* 一次多拉几条：站点默认 5 条，消息一多就有几条只进「还有 N 条」的汇总里，
+   谁发的、哪条帖子全看不到。15 条足够覆盖一轮的新消息，也不至于把接口拉爆 */
+const API_LIST = BASE + '/api/v1/notifications?limit=15';
 const ICON_PATH = 'icons/hot128.png';
 
 const DEFAULTS = {
@@ -11,10 +13,13 @@ const DEFAULTS = {
   chain: ['page', 'direct', 'window'],
   intervalMin: 1,
   notify: true,
-  notifyTypes: { mention: true, reply: true, like: true, system: true },
+  /* 关注类单独一档：想收新粉丝、又不想被管理通知打扰的人，终于能分开设了 */
+  notifyTypes: { mention: true, reply: true, like: true, follow: true, system: true },
   notifyMax: 3,
   badge: false,
   sound: true,
+  /* 关注关键词：标题、摘要或作者名命中其中任意一个，就不管类型开关，直接弹 */
+  keywords: [],
   dndEnabled: false,
   dndStart: '22:30',
   dndEnd: '07:00'
@@ -559,12 +564,14 @@ async function readUnread() {
 
 /* ---------- 通知 ---------- */
 
-/* 四类提醒开关，和站点自己的四个分类一一对应 */
+/* 五类提醒开关，和站点自己的分类一一对应。
+   关注单列一档：以前 USER_FOLLOWED 混在 system 里，想关掉管理/申诉通知就会把新粉丝一起关掉 */
 const TYPE_CATEGORY = {
   mention: ['USER_MENTIONED', 'WORK_COMMENT_MENTIONED'],
   reply: ['REPLY_CREATED', 'WORK_COMMENT_CREATED', 'WORK_COMMENT_REPLY_CREATED'],
   like: ['POST_LIKED', 'WORK_LIKED', 'WORK_COMMENT_LIKED'],
-  system: ['MANAGEMENT_ACTION', 'TOPIC_EVENT', 'LEVEL_CERTIFICATION', 'USER_FOLLOWED', 'TAKEDOWN_APPEAL_DECIDED', 'QUESTION_DUPLICATE_REQUEST_DECIDED']
+  follow: ['USER_FOLLOWED'],
+  system: ['MANAGEMENT_ACTION', 'TOPIC_EVENT', 'LEVEL_CERTIFICATION', 'TAKEDOWN_APPEAL_DECIDED', 'QUESTION_DUPLICATE_REQUEST_DECIDED']
 };
 
 function categoryOf(type) {
@@ -576,12 +583,30 @@ function categoryOf(type) {
 
 /* 只留下用户开着的那几类；全关了就等于不弹 */
 function filterByTypes(items, types) {
-  const on = Object.assign({ mention: true, reply: true, like: true, system: true }, types || {});
+  const on = Object.assign({ mention: true, reply: true, like: true, follow: true, system: true }, types || {});
   if (!Array.isArray(items)) return [];
   return items.filter(function (it) {
     if (!it || typeof it !== 'object') return false;
     return on[categoryOf(it.type)] !== false;
   });
+}
+
+/* 关键词命中判定：拿已经整理好的字段比，避免重复 normalize */
+function keywordHit(one, keywords) {
+  if (!one || !keywords || !keywords.length) return false;
+  const hay = ((one.topicTitle || '') + ' ' + (one.excerpt || '') + ' ' + (one.actor || '')).toLowerCase();
+  for (let i = 0; i < keywords.length; i++) {
+    const kw = String(keywords[i] || '').trim().toLowerCase();
+    if (kw && hay.indexOf(kw) >= 0) return true;
+  }
+  return false;
+}
+
+/* 关注关键词：标题、摘要、作者名任意一处命中就算命中。
+   命中后无视上面的类型开关——这是「我就是要盯着这条/这个人」的例外通道 */
+function matchKeywords(raw, keywords) {
+  if (!keywords || !keywords.length) return false;
+  return keywordHit(normalizeItem(raw), keywords);
 }
 
 const TYPE_ACTION = {
@@ -803,7 +828,7 @@ function itemKey(i) {
   return [i.category || '', i.actor || '', i.ts || '', i.postId || i.topicId || i.workId || '', i.floor || ''].join('|');
 }
 
-function recentFor(items, max, readSeen) {
+function recentFor(items, max, readSeen, keywords) {
   const n = Math.max(1, Math.min(5, Number(max) || 3));
   const skip = Array.isArray(readSeen) ? readSeen : [];
   return arrangeItems(items).filter(function (i) {
@@ -822,7 +847,9 @@ function recentFor(items, max, readSeen) {
       postId: i.postId,
       topicId: i.topicId,
       workId: i.workId,
-      profileId: i.profileId
+      profileId: i.profileId,
+      /* 弹窗里给命中关键词的那几条单独标一下，不然用户不知道它为什么没被类型开关拦掉 */
+      watch: keywordHit(i, keywords)
     };
   });
 }
@@ -860,13 +887,15 @@ async function capNotifications() {
 /* 一条新消息单独弹一条通知：谁 + 做了什么 + 哪条帖子第几楼。
    通知 id 用消息自己的 id（稳定），同一条消息不会重复弹；
    跳转链接写进 storage 的 pending，后台被回收后点击仍然能直达 */
-async function showItemNote(raw) {
+async function showItemNote(raw, watch) {
   const c = await cfg();
   const one = normalizeItem(raw);
   if (!one) return null;
   /* 直接拼单条文案：normalizeItem 已经把「谁 + 做了啥 + 哪条」拆好了，
      再走 noteText 会被二次 normalize 丢掉字段 */
-  const title = (one.actor || '有人') + ' ' + (one.action || '有新消息');
+  const head = (one.actor || '有人') + ' ' + (one.action || '有新消息');
+  /* 命中关注关键词的那条在标题上打个记号，一眼就知道不是普通推送 */
+  const title = watch ? '关注提醒 · ' + head : head;
   const message = topicLine(one) || '点开消息中心看详情';
 
   /* 图标用发送者头像：先抓成 data URL（绕开站点 CORP 跨源限制），抓不到再退远程地址，最后回退扩展图标 */
@@ -982,7 +1011,7 @@ async function poll() {
         via: res.via,
         error: '',
         loggedOut: false,
-        recent: recentFor(res.items, c.notifyMax, prev.readSeen)
+        recent: recentFor(res.items, c.notifyMax, prev.readSeen, c.keywords)
       });
 
       await updateBadge(res.count, c);
@@ -990,14 +1019,19 @@ async function poll() {
       /* 先按 id 记账再决定弹不弹：首轮只记账（避免装完把历史未读一起弹），
          之后只弹「以前没见过 & 未读 & 类型开着」的那几条，一条新消息只弹一次 */
       const ns = await noteState();
-      const picked = filterByTypes(res.items, c.notifyTypes);
-      const fresh = (c.notify && !inDnd(c)) ? freshItems(picked, ns.seen, ns.seeded) : [];
+      const kw = Array.isArray(c.keywords) ? c.keywords : [];
+      /* 先按「没见过」筛，再按「类型开关，或命中了关注关键词」筛。
+         关键词是例外通道：命中就不受类型开关限制，否则「我盯着这条帖子」设了也白设 */
+      const allFresh = (c.notify && !inDnd(c)) ? freshItems(res.items, ns.seen, ns.seeded) : [];
+      const fresh = allFresh.filter(function (raw) {
+        return matchKeywords(raw, kw) || filterByTypes([raw], c.notifyTypes).length > 0;
+      });
       let noteCount = 0;
 
       if (fresh.length) {
         const max = Math.max(1, Math.min(5, Number(c.notifyMax) || 3));
         const shown = fresh.slice(0, max);
-        for (let k = 0; k < shown.length; k++) await showItemNote(shown[k]);
+        for (let k = 0; k < shown.length; k++) await showItemNote(shown[k], matchKeywords(shown[k], kw));
         noteCount = shown.length;
         if (fresh.length > shown.length) {
           await showSummary(fresh.length - shown.length);
@@ -1105,6 +1139,11 @@ chrome.notifications.onButtonClicked.addListener(async function (id, index) {
 
 /* 每个版本到底改了什么：升级提示里直接列出来，不再写空话 */
 const UPDATE_NOTES = {
+  '2.7.0': [
+    '「新增关注」从系统通知里拆成单独一档：只想收新粉丝、不想被管理处罚那类打扰，现在能分开设',
+    '加了关注关键词：标题、摘要或作者名里的词一命中就一定弹，无视类型开关，通知标题前面带「关注提醒」',
+    '一轮最多读 15 条（原来 5 条），新消息一多不再只剩一句「还有 N 条」什么都看不到'
+  ],
   '2.6.9': [
     '「关注了你」点开进对方主页，不再一律落到消息中心',
     '管理通知这类把目标藏在 details.target 里的，现在也认得出作品和帖子',
@@ -1235,6 +1274,17 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       const next = Object.assign({}, cur, msg.patch || {});
       if (msg.patch && msg.patch.intervalMin != null) next.intervalMin = clampMin(msg.patch.intervalMin);
       if (msg.patch && msg.patch.notifyMax != null) next.notifyMax = Math.max(1, Math.min(5, Number(msg.patch.notifyMax) || 3));
+      /* 关键词：逗号/顿号/分号/换行都当分隔符，去空、去重、最多 10 个，防止输入框里塞一长串 */
+      if (msg.patch && Array.isArray(msg.patch.keywords)) {
+        const seen = {};
+        next.keywords = msg.patch.keywords.map(function (k) {
+          return String(k == null ? '' : k).trim().slice(0, 24);
+        }).filter(function (k) {
+          if (!k || seen[k.toLowerCase()]) return false;
+          seen[k.toLowerCase()] = 1;
+          return true;
+        }).slice(0, 10);
+      }
       if (msg.patch && Array.isArray(msg.patch.chain)) {
         const all = ['page', 'direct', 'window'];
         const picked = msg.patch.chain.filter(function (s) { return all.indexOf(s) >= 0; });

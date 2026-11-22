@@ -1,7 +1,7 @@
 /* 运行在 Pickcat 页面里：用页面自身的登录状态读取未读数，供后台取用 */
 
 const SUMMARY_URL = '/api/v1/notification-summary';
-const LIST_URL = '/api/v1/notifications?limit=5';
+const LIST_URL = '/api/v1/notifications?limit=15';
 const ALL_URL = '/api/v1/notifications';
 
 async function readUnread() {
