@@ -341,9 +341,9 @@ function bridgeGo(a, card) {
   bridgeToken += 1;
   var token = bridgeToken;
   var oldHref = location.href;
-  var oldPath = location.pathname;
   /* 只有帖子 / 作品卡才做共享元素，其余走整页交叉淡入 */
   var share = !!(card && card.style && a.closest(BRIDGE_LINK));
+  var vtBox = null;
   if (share) card.style.setProperty('view-transition-name', VT_NAME);
 
   var vt = null;
@@ -351,6 +351,16 @@ function bridgeGo(a, card) {
   var unlock = window.setTimeout(function () {
     if (bridgeToken === token) bridgeBusy = false;
   }, 3000);
+
+  function cleanup() {
+    if (bridgeToken === token) bridgeBusy = false;
+    if (share && card) card.style.removeProperty('view-transition-name');
+    if (vtBox) {
+      vtBox.style.removeProperty('view-transition-name');
+      vtBox = null;
+    }
+  }
+
   try {
     vt = document.startViewTransition(function () {
       a.click();
@@ -358,14 +368,20 @@ function bridgeGo(a, card) {
         var n = 0;
         var iv = window.setInterval(function () {
           n += 1;
+          /* 光换地址不算到位：详情页标题得真的渲染出来，快照才拍得到内容 */
           var moved = location.href !== oldHref;
+          var head = moved ? document.querySelector('main h1, article h1, h1') : null;
+          var arrived = !!(head && head.textContent && head.textContent.trim());
           /* 最多等 1.6 秒，页面再慢也不让过场吊在那里 */
-          if (moved || n > 40) {
+          if (arrived || n > 40) {
             window.clearInterval(iv);
-            if (share && location.pathname !== oldPath) {
-              /* 等详情页把标题容器渲染出来，共享元素才有落点 */
-              var target = document.querySelector('article h1, main h1, h1');
-              if (target) target.style.setProperty('view-transition-name', VT_NAME);
+            if (share && arrived) {
+              /* 落点取标题所在的卡片容器：让那张卡自己长成整页，而不是缩成一个标题 */
+              var box = head.closest('article') || head.parentElement;
+              if (box) {
+                box.style.setProperty('view-transition-name', VT_NAME);
+                vtBox = box;
+              }
             }
             resolve();
           }
@@ -375,30 +391,22 @@ function bridgeGo(a, card) {
   } catch (err) {
     /* 过渡起步就失败：立刻解锁，让调用方走普通跳转 */
     window.clearTimeout(unlock);
-    if (bridgeToken === token) bridgeBusy = false;
-    if (share) card.style.removeProperty('view-transition-name');
+    cleanup();
     return false;
   }
   if (!vt) {
     window.clearTimeout(unlock);
-    if (bridgeToken === token) bridgeBusy = false;
-    if (share) card.style.removeProperty('view-transition-name');
+    cleanup();
     return false;
   }
 
   vt.finished.then(function () {
     window.clearTimeout(unlock);
-    if (bridgeToken === token) bridgeBusy = false;
-    if (share) card.style.removeProperty('view-transition-name');
-    var target = document.querySelector('article h1, main h1, h1');
-    if (target) target.style.removeProperty('view-transition-name');
+    cleanup();
   }).catch(function () {
     /* 过渡被跳过 / 取消也要解锁，否则整站点击都会失灵 */
     window.clearTimeout(unlock);
-    if (bridgeToken === token) bridgeBusy = false;
-    if (share) card.style.removeProperty('view-transition-name');
-    var target = document.querySelector('article h1, main h1, h1');
-    if (target) target.style.removeProperty('view-transition-name');
+    cleanup();
   });
   return true;
 }

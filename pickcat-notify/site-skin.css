@@ -265,18 +265,29 @@ header [class*="bg-(--ui-bg-shell)"],
 html:not(.dark) * { scrollbar-color: rgba(17, 19, 26, .18) transparent; }
 
 /* ---------- 10. 页面过渡（全站） ----------
-   站内任何跳转都走这一层：旧页淡出、新页淡入；帖子 / 作品卡额外做共享元素放大。
-   统一缓动、时长压在 0.3 秒上下，短促但不生硬，全程只走合成层。 */
+   站内任何跳转都走这一层：旧页淡出、新页淡入；帖子 / 作品卡额外做共享元素。
+   缓动统一用 easeOutQuint，起手快、收尾长，展开像"圆角慢慢铺开"，不硬切。 */
 ::view-transition-group(root),
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: .28s;
-  animation-timing-function: cubic-bezier(.22, .9, .28, 1);
+  animation-duration: .42s;
+  animation-timing-function: cubic-bezier(.22, 1, .36, 1);
 }
 
 ::view-transition-group(postcard) {
-  animation-duration: .40s;
-  animation-timing-function: cubic-bezier(.22, .9, .28, 1);
+  animation-duration: .55s;
+  animation-timing-function: cubic-bezier(.22, 1, .36, 1);
+}
+
+/* 卡片自己的圆角跟着一起"撑开"，展开过程才像一个容器在长，而不是两张图在交叉 */
+::view-transition-image-pair(postcard) {
+  overflow: hidden;
+  animation: pcl-radius .55s cubic-bezier(.22, 1, .36, 1) both;
+}
+
+@keyframes pcl-radius {
+  from { border-radius: 22px; }
+  to { border-radius: 0; }
 }
 
 /* 不叠混合层，合成开销最轻 */
