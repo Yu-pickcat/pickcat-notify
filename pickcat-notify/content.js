@@ -308,12 +308,12 @@ function paintMotion() {
 
 paintMotion();
 
-/* ---------- 页面过渡：全站 SPA 导航都走一层优雅的过场 ----------
+/* ---------- 页面过渡：站内跳转都走一层看得见的过场 ----------
    站点是 SPA，点站内链接不整页刷新；用 View Transitions API 包一层：
-   帖子 / 作品卡片 → 共享元素放大到详情页；其余站内导航 → 旧页淡出、新页淡入。
+   帖子 / 作品卡 → 卡片自己长成详情页那张卡；其余站内导航 → 旧页淡出、新页淡入。
+   只等到"地址变了 + 内容出来了"就开始，最多等 160ms，点下去不会卡。
    外链、_blank、下载、修饰键点击一律放行，不拦。 */
 let bridgeBusy = false;
-let bridgeToken = 0;
 const BRIDGE_LINK = 'a[href*="/forum/post/"], a[href*="/works/"], a[href*="/work/"]';
 const VT_NAME = 'postcard';
 
@@ -338,29 +338,28 @@ function bridgeGo(a, card) {
   if (bridgeBusy) return false;
   if (!document.startViewTransition) return false;
   bridgeBusy = true;
-  bridgeToken += 1;
-  var token = bridgeToken;
+
   var oldHref = location.href;
-  /* 只有帖子 / 作品卡才做共享元素，其余走整页交叉淡入 */
+  /* 帖子 / 作品卡才做共享元素，其余走整页交叉淡入 */
   var share = !!(card && card.style && a.closest(BRIDGE_LINK));
   var vtBox = null;
   if (share) card.style.setProperty('view-transition-name', VT_NAME);
 
-  var vt = null;
-  /* 保险丝：真出意外 3 秒后强制解锁，绝不把整站点击锁死 */
-  var unlock = window.setTimeout(function () {
-    if (bridgeToken === token) bridgeBusy = false;
-  }, 3000);
-
-  function cleanup() {
-    if (bridgeToken === token) bridgeBusy = false;
+  var done = false;
+  function release() {
+    if (done) return;
+    done = true;
+    bridgeBusy = false;
     if (share && card) card.style.removeProperty('view-transition-name');
     if (vtBox) {
       vtBox.style.removeProperty('view-transition-name');
       vtBox = null;
     }
   }
+  /* 保险丝：真出意外 2 秒后强制解锁，绝不把点击锁死 */
+  var grace = window.setTimeout(release, 2000);
 
+  var vt = null;
   try {
     vt = document.startViewTransition(function () {
       a.click();
@@ -368,45 +367,50 @@ function bridgeGo(a, card) {
         var n = 0;
         var iv = window.setInterval(function () {
           n += 1;
-          /* 光换地址不算到位：详情页标题得真的渲染出来，快照才拍得到内容 */
           var moved = location.href !== oldHref;
-          var head = moved ? document.querySelector('main h1, article h1, h1') : null;
-          var arrived = !!(head && head.textContent && head.textContent.trim());
-          /* 最多等 1.6 秒，页面再慢也不让过场吊在那里 */
-          if (arrived || n > 40) {
-            window.clearInterval(iv);
-            if (share && arrived) {
-              /* 落点取标题所在的卡片容器：让那张卡自己长成整页，而不是缩成一个标题 */
-              var box = head.closest('article') || head.parentElement;
-              if (box) {
-                box.style.setProperty('view-transition-name', VT_NAME);
-                vtBox = box;
+          if (moved) {
+            var head = document.querySelector('main h1, article h1, h1');
+            if (head && head.textContent && head.textContent.trim()) {
+              if (share) {
+                /* 落点取标题所在的卡片容器：卡片长成那张卡，不是缩成一个标题 */
+                var box = head.closest('article') || head.parentElement;
+                if (box) {
+                  box.style.setProperty('view-transition-name', VT_NAME);
+                  vtBox = box;
+                }
               }
+              window.clearInterval(iv);
+              resolve();
+              return;
             }
+          }
+          /* 最多等 160ms：再慢也不让过场吊在那里 */
+          if (n >= 8) {
+            window.clearInterval(iv);
             resolve();
           }
-        }, 40);
+        }, 20);
       });
     });
   } catch (err) {
     /* 过渡起步就失败：立刻解锁，让调用方走普通跳转 */
-    window.clearTimeout(unlock);
-    cleanup();
+    window.clearTimeout(grace);
+    release();
     return false;
   }
   if (!vt) {
-    window.clearTimeout(unlock);
-    cleanup();
+    window.clearTimeout(grace);
+    release();
     return false;
   }
 
   vt.finished.then(function () {
-    window.clearTimeout(unlock);
-    cleanup();
+    window.clearTimeout(grace);
+    release();
   }).catch(function () {
-    /* 过渡被跳过 / 取消也要解锁，否则整站点击都会失灵 */
-    window.clearTimeout(unlock);
-    cleanup();
+    /* 过渡被跳过 / 取消也要解锁，否则点击都会失灵 */
+    window.clearTimeout(grace);
+    release();
   });
   return true;
 }
@@ -420,6 +424,7 @@ function paintBridge() {
     if (!t || !t.closest) return;
     var a = t.closest('a[href]');
     if (!sameOriginLink(a)) return;
+    /* 只管"点开帖子 / 作品"这一类，其余站内跳转一概不碰，保持原生手感 */
     /* 没有过渡能力就完全放行，绝不吞掉点击 */
     if (!document.startViewTransition) return;
     if (!bridgeGo(a, cardOf(a))) return;
