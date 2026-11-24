@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "pickcat 通知",
-  "version": "2.8.0",
-  "version_name": "V2.8.0",
+  "version": "2.9.0",
+  "version_name": "V2.9.0",
   "description": "关掉 Pickcat 网页也能在后台检查未读消息，一条条写清是谁赞了你、回复了哪一楼，点通知直达那一楼；界面与配色对齐 Pickcat 官网，弹窗里能按 @我 / 回复 / 赞 / 关注 / 系统 筛选；设置页能设关注关键词（命中就必弹）并直接查有没有新版。",
   "permissions": ["alarms", "notifications", "storage"],
   "host_permissions": ["https://pickcat.dao3.fun/*"],

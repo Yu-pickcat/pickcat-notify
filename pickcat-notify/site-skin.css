@@ -264,14 +264,34 @@ header [class*="bg-(--ui-bg-shell)"],
 
 html:not(.dark) * { scrollbar-color: rgba(17, 19, 26, .18) transparent; }
 
-/* ---------- 10. 页面过渡 ----------
-   首页点帖子/作品，共享元素从卡片放大到帖子页标题，其余部分淡入淡出。 */
-::view-transition-group(postcard) {
-  animation-duration: .42s;
+/* ---------- 10. 页面过渡（全站） ----------
+   站内任何跳转都走这一层：旧页淡出、新页淡入；帖子 / 作品卡额外做共享元素放大。
+   统一缓动、时长压在 0.3 秒上下，短促但不生硬，全程只走合成层。 */
+::view-transition-group(root),
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: .28s;
   animation-timing-function: cubic-bezier(.22, .9, .28, 1);
 }
 
+::view-transition-group(postcard) {
+  animation-duration: .40s;
+  animation-timing-function: cubic-bezier(.22, .9, .28, 1);
+}
+
+/* 不叠混合层，合成开销最轻 */
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: .30s;
+  mix-blend-mode: normal;
+}
+
+/* 系统要求减少动态时直接瞬切 */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(root),
+  ::view-transition-old(root),
+  ::view-transition-new(root),
+  ::view-transition-group(postcard) {
+    animation-duration: .01s;
+    animation-timing-function: linear;
+  }
 }
