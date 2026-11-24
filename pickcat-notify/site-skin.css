@@ -264,33 +264,39 @@ header [class*="bg-(--ui-bg-shell)"],
 
 html:not(.dark) * { scrollbar-color: rgba(17, 19, 26, .18) transparent; }
 
-/* ---------- 10. 页面过渡（站内） ----------
-   站内跳转都有一层过场：整页淡入淡出 0.30 秒，帖子 / 作品卡 0.36 秒长成详情页。
-   缓动统一 easeOutQuint，起手快、收尾稳；全程只走合成层。 */
-::view-transition-group(root),
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: .30s;
+/* ---------- 10. 页面过渡（全站，和扩展浮窗同一手感） ----------
+   新页淡入 + 极轻微缩放，旧页快速退掉；不做共享元素、不做形态变换。
+   0.26 秒，前快后缓，点一下就过去，不卡也不"弹"。 */
+::view-transition-group(root) {
+  animation-duration: .26s;
   animation-timing-function: cubic-bezier(.22, 1, .36, 1);
 }
 
-::view-transition-group(postcard) {
-  animation-duration: .36s;
-  animation-timing-function: cubic-bezier(.22, 1, .36, 1);
-}
-
-/* 不叠混合层，合成开销最轻 */
-::view-transition-old(root),
-::view-transition-new(root) {
+::view-transition-old(root) {
+  animation: pcl-vt-out .18s cubic-bezier(.4, 0, .6, 1) both;
   mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  animation: pcl-vt-in .26s cubic-bezier(.22, 1, .36, 1) both;
+  mix-blend-mode: normal;
+}
+
+@keyframes pcl-vt-in {
+  from { opacity: 0; transform: scale(.985); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pcl-vt-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
 
 /* 系统要求减少动态时直接瞬切 */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(root),
   ::view-transition-old(root),
-  ::view-transition-new(root),
-  ::view-transition-group(postcard) {
+  ::view-transition-new(root) {
     animation-duration: .01s;
     animation-timing-function: linear;
   }

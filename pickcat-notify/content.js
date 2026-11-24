@@ -308,14 +308,12 @@ function paintMotion() {
 
 paintMotion();
 
-/* ---------- 页面过渡：站内跳转都走一层看得见的过场 ----------
-   站点是 SPA，点站内链接不整页刷新；用 View Transitions API 包一层：
-   帖子 / 作品卡 → 卡片自己长成详情页那张卡；其余站内导航 → 旧页淡出、新页淡入。
-   只等到"地址变了 + 内容出来了"就开始，最多等 160ms，点下去不会卡。
+/* ---------- 页面过渡：全站站内跳转都走一层浮窗式的淡入 ----------
+   站点是 SPA，点站内链接不整页刷新；用 View Transitions 包一层，
+   就是扩展浮窗那种手感：新页淡入 + 极轻微缩放（1 → 1.015 收回到 1），
+   不做共享元素、不做形态变换、不等页面内容渲染，点下去立刻响应。
    外链、_blank、下载、修饰键点击一律放行，不拦。 */
 let bridgeBusy = false;
-const BRIDGE_LINK = 'a[href*="/forum/post/"], a[href*="/works/"], a[href*="/work/"]';
-const VT_NAME = 'postcard';
 
 /* 只接管"站内、当前窗口、普通左键"的链接 */
 function sameOriginLink(a) {
@@ -330,66 +328,29 @@ function sameOriginLink(a) {
   return u.origin === location.origin;
 }
 
-function cardOf(a) {
-  return a.closest('article, [class*="bg-(--ui-card-translucent)"]');
-}
-
-function bridgeGo(a, card) {
+function bridgeGo(a) {
   if (bridgeBusy) return false;
   if (!document.startViewTransition) return false;
   bridgeBusy = true;
-
-  var oldHref = location.href;
-  /* 帖子 / 作品卡才做共享元素，其余走整页交叉淡入 */
-  var share = !!(card && card.style && a.closest(BRIDGE_LINK));
-  var vtBox = null;
-  if (share) card.style.setProperty('view-transition-name', VT_NAME);
 
   var done = false;
   function release() {
     if (done) return;
     done = true;
     bridgeBusy = false;
-    if (share && card) card.style.removeProperty('view-transition-name');
-    if (vtBox) {
-      vtBox.style.removeProperty('view-transition-name');
-      vtBox = null;
-    }
   }
-  /* 保险丝：真出意外 2 秒后强制解锁，绝不把点击锁死 */
-  var grace = window.setTimeout(release, 2000);
+  /* 保险丝：真出意外 1.5 秒后强制解锁，绝不把点击锁死 */
+  var grace = window.setTimeout(release, 1500);
 
   var vt = null;
   try {
     vt = document.startViewTransition(function () {
       a.click();
+      /* 让出两帧给站点把新页面铺上，再拍快照；这点延迟看不出来 */
       return new Promise(function (resolve) {
-        var n = 0;
-        var iv = window.setInterval(function () {
-          n += 1;
-          var moved = location.href !== oldHref;
-          if (moved) {
-            var head = document.querySelector('main h1, article h1, h1');
-            if (head && head.textContent && head.textContent.trim()) {
-              if (share) {
-                /* 落点取标题所在的卡片容器：卡片长成那张卡，不是缩成一个标题 */
-                var box = head.closest('article') || head.parentElement;
-                if (box) {
-                  box.style.setProperty('view-transition-name', VT_NAME);
-                  vtBox = box;
-                }
-              }
-              window.clearInterval(iv);
-              resolve();
-              return;
-            }
-          }
-          /* 最多等 160ms：再慢也不让过场吊在那里 */
-          if (n >= 8) {
-            window.clearInterval(iv);
-            resolve();
-          }
-        }, 20);
+        window.requestAnimationFrame(function () {
+          window.requestAnimationFrame(resolve);
+        });
       });
     });
   } catch (err) {
@@ -424,10 +385,9 @@ function paintBridge() {
     if (!t || !t.closest) return;
     var a = t.closest('a[href]');
     if (!sameOriginLink(a)) return;
-    /* 只管"点开帖子 / 作品"这一类，其余站内跳转一概不碰，保持原生手感 */
     /* 没有过渡能力就完全放行，绝不吞掉点击 */
     if (!document.startViewTransition) return;
-    if (!bridgeGo(a, cardOf(a))) return;
+    if (!bridgeGo(a)) return;
     /* 拦下这一次，交给 a.click() 重新派发，避免站点自己也跳一遍 */
     e.preventDefault();
     e.stopPropagation();
@@ -463,7 +423,7 @@ function paintHit() {
     if (!card) return;
     const a = card.querySelector(LINK);
     if (!a || !a.href) return;
-    if (bridgeGo(a, card)) return;
+    if (bridgeGo(a)) return;
     a.click();
   }, false);
 }
