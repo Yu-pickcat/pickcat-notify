@@ -57,6 +57,13 @@
   .upd-status.bad { color: var(--signal); }
 
   .foot { margin-top: 16px; }
+
+  .beta-tag {
+    display: inline-block; vertical-align: 2px; margin-left: 6px;
+    padding: 1px 7px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .02em;
+    color: var(--brand); background: var(--brand-soft);
+  }
 </style>
 </head>
 <body>
@@ -96,13 +103,29 @@
   </div>
 
   <div class="card">
-    <div class="sec-title">站点外观</div>
+    <div class="sec-title">站点外观 <span class="beta-tag">测试版</span></div>
     <div class="row">
       <div>
         <div class="row-label">Pickcat 网页跟着一起换</div>
-        <div class="row-desc">把 pickcat.dao3.fun 的底色、卡片、悬浮顶栏和底栏、二级浮窗都换成同一套；关掉就回到官网原样</div>
+        <div class="row-desc">只动圆角、桌面悬浮顶栏和打开动效；配色、模糊、手机底栏、头像图片全部保持官网原样，关掉一个开关就完全回到原站</div>
       </div>
       <div class="switch" id="swSiteSkin"><div class="knob"></div></div>
+    </div>
+    <div class="row row-col">
+      <div class="row-label">卡片圆角</div>
+      <div class="row-desc">只动圆角，配色一个值不改；卡片 28（可选 24/32），浮窗同级、顶栏 22、输入 12、卡内小块 16；头像和图片不碰</div>
+      <div class="seg" id="radiusSeg">
+        <button type="button" data-v="24">24</button>
+        <button type="button" data-v="28">28</button>
+        <button type="button" data-v="32">32</button>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <div class="row-label">全直角</div>
+        <div class="row-desc">输入框、卡片、表格、入口按钮一起收平；头像和图片仍然不动</div>
+      </div>
+      <div class="switch" id="swSquare"><div class="knob"></div></div>
     </div>
   </div>
 

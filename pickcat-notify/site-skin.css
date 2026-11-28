@@ -1,205 +1,157 @@
-/* Pickcat 站点皮肤 · 实底 + 原生模糊
+/* Pickcat 站点皮肤 · 圆角 + 悬浮壳 + 打开动效
    ————————————————————————————————————————————————
-   思路：不做材质。一级内容（页面底色 / 列表卡片）全是实底，只靠"底色深浅差 + 1px 描边 + 圆角 + 留白"分层；
-   浮起来的三层（桌面顶栏 / 手机底栏 / 二级浮窗）才给浏览器原生 backdrop-filter 模糊 + 半透明。
-   没有渐变光、没有棱色、没有自造的折射环，模糊只是让背后的内容淡淡透出来。
-   桌面端只改上面那一栏，手机端只改下面那一栏，两端各管各的。
-   设置页「站点外观」可整层关掉。
-   ———————————————————————————————————————————————— */
+   配色仍然一个值不写：卡片白/底灰、文字、图标、描边全用站点自己的；
+   模糊不接管本站自己的层级，只给"浮起来的顶栏 / 底栏 / 二级窗口"用一份原生 backdrop-filter，
+   让背后的内容淡淡透出来——这是悬浮感必需的，站点自己那层也这么干。
+   圆的给圆：头像一律 999px，别被图片圆角规则压成方形。 */
 
-/* ---------- 1. 底色：纯色，不打光 ---------- */
+/* 顶部不再留空带：站点 main 自带的 24px 压到 8（窄屏 6），悬浮顶栏下沿到第一块就这 8px */
+html.pcl-skin main { padding-top: 8px !important; }
+@media (max-width: 767px) { html.pcl-skin main { padding-top: 6px !important; } }
 
-html.dark {
-  --ui-bg-muted: #0a0a0b;
-  --ui-card-translucent: #181819;
-  --ui-card-interactive: #1f2021;
-  --ui-border: rgba(255, 255, 255, .07);
+/* ---------- 1. 半径阶梯（全站一把尺子，不留直角） ---------- */html.pcl-skin {
+  --pcl-r-card: 28px;   /* 一级卡片 */
+  --pcl-r-sheet: 28px;  /* 二级窗口 / 弹窗 */
+  --pcl-r-head: 22px;   /* 悬浮顶栏 / 底栏 */
+  --pcl-r-inner: 16px;  /* 卡内小块、内嵌面板 */
+  --pcl-r-ctl: 12px;    /* 输入框、下拉、按钮 */
+  --pcl-r-chip: 8px;    /* 话题、标签、徽章 */
+  --pcl-r-media: 12px;  /* 图片、视频 */
 }
 
-html:not(.dark) {
-  --ui-bg-muted: #eef0f4;
-  --ui-card-translucent: #ffffff;
-  --ui-card-interactive: #f7f8fa;
-  --ui-border: rgba(17, 19, 26, .07);
+html.pcl-skin.pcl-r24 { --pcl-r-card: 24px; }
+html.pcl-skin.pcl-r32 { --pcl-r-card: 32px; }
+
+/* 一级卡片：只认真正的卡片容器。绝不用 rounded-xl / rounded-2xl 这种通用类去套，
+   那样头像、封面、小图标会被一起改成 28 的"宽宽"。 */
+html.pcl-skin main article,
+html.pcl-skin main .card,
+html.pcl-skin main [class*="ui-card-translucent"] {
+  border-radius: var(--pcl-r-card) !important;
 }
 
-/* 站点原来在铺满全屏那层打过三团 radial 光，整页泛色就是它，直接清掉 */
-.bg-muted {
-  background-image: none !important;
-  background-color: #0a0a0b !important;
+/* 卡内小块：卡里嵌的那层面板（带描边的）统一 16，别出现有的直有的圆。
+   注意排除一切头像/圆形容器，它们保持 999。 */
+html.pcl-skin main [class*="bg-default"]:not([class*="rounded-full"]),
+html.pcl-skin main [class*="bg-muted"]:not([class*="rounded-full"]) {
+  border-radius: var(--pcl-r-inner) !important;
 }
 
-html:not(.dark) .bg-muted {
-  background-color: #eef0f4 !important;
+/* 二级窗口 */
+html.pcl-skin [class*="reka-popover-content-transform-origin"],
+html.pcl-skin [class*="reka-dialog-content"],
+html.pcl-skin [class*="reka-dropdown-menu-content"],
+html.pcl-skin .pcl-sheet {
+  border-radius: var(--pcl-r-sheet) !important;
 }
 
-/* ---------- 2. 圆角：跟扩展同一把尺子 ---------- */
-
-.rounded-xl { border-radius: 18px; }
-.rounded-lg { border-radius: 14px; }
-.rounded-md { border-radius: 10px; }
-.rounded-sm { border-radius: 8px; }
-
-/* ---------- 3. 一层：卡片实底 ---------- */
-
-[class*="bg-(--ui-card-translucent)"] {
-  position: relative;
-  transition: background-color .22s linear, box-shadow .22s linear, scale .16s cubic-bezier(.34, 1.56, .64, 1);
+/* 输入类 */
+html.pcl-skin main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.pcl-skin main select,
+html.pcl-skin main textarea,
+html.pcl-skin main [contenteditable] {
+  border-radius: var(--pcl-r-ctl) !important;
 }
 
-html.dark [class*="bg-(--ui-card-translucent)"] {
-  background-color: #181819 !important;
-  background-image: none !important;
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06) !important;
+/* 「分享你的想法」这类整条入口按钮：站点原生只有 6px，在一圈圆角卡片中间显得突兀。
+   只给这一条打标（content.js 按文字认），圆角跟卡片一把尺子——按钮 48 高，会自动收到胶囊形；
+   颜色、尺寸、文字一概不动。 */
+html.pcl-skin [data-pcl-cta] {
+  border-radius: var(--pcl-r-card) !important;
 }
 
-html.dark [class*="bg-(--ui-card-translucent)"]:hover {
-  background-color: #1f2021 !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .10) !important;
+/* 话题 / 标签 / 徽章 */
+
+/* 图片 / 视频 / 头像 / 封面：一律不动，原站什么样就什么样，这里不写任何 img、头像规则。 */
+
+/* 表格：给个温和的内圆角，不做硬直角 */
+html.pcl-skin main table,
+html.pcl-skin main td,
+html.pcl-skin main th,
+html.pcl-skin main tr {
+  border-radius: 8px !important;
 }
 
-html:not(.dark) [class*="bg-(--ui-card-translucent)"] {
-  background-color: #ffffff !important;
-  background-image: none !important;
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
-  box-shadow: inset 0 0 0 1px rgba(17, 19, 26, .06) !important;
+/* 全直角开关：只收平控件与卡片，头像仍然是圆的 */
+html.pcl-skin.pcl-square main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.pcl-skin.pcl-square main select,
+html.pcl-skin.pcl-square main textarea,
+html.pcl-skin.pcl-square main [contenteditable],
+html.pcl-skin.pcl-square main [class*="rounded-lg"]:not([class*="rounded-full"]),
+html.pcl-skin.pcl-square main [data-pcl-cta],
+html.pcl-skin.pcl-square main article,
+html.pcl-skin.pcl-square main .card,
+html.pcl-skin.pcl-square main [class*="ui-card-translucent"],
+html.pcl-skin.pcl-square main table,
+html.pcl-skin.pcl-square main td,
+html.pcl-skin.pcl-square main th,
+html.pcl-skin.pcl-square main tr {
+  border-radius: 0 !important;
 }
 
-/* 整块可点，给个指针提示 */
-article {
-  cursor: pointer;
+/* ---------- 2. 悬浮壳（几何与底色由 content.js 按视口落内联，这里只管圆角与动画） ---------- */
+html.pcl-skin header[data-pcl-float],
+html.pcl-skin [data-pcl-float="bar"] {
+  border-radius: var(--pcl-r-head) !important;
+  transition: top .24s cubic-bezier(.34, 1.4, .64, 1), margin .24s cubic-bezier(.34, 1.4, .64, 1) !important;
 }
 
-/* ---------- 4. 结构层 ----------
-   顶栏/底栏的几何（top / 圆角 / 底色 / 模糊）由 content.js 落内联，样式表压不动 Tailwind v4 的 layer，
-   这里只留一件事：移动端浮窗别顶到屏幕边。 */
-@media (max-width: 1023px) {
-  [class*="reka-popover-content-transform-origin"],
-  [class*="reka-dialog-content"],
-  [class*="reka-dropdown-menu-content"] {
-    max-width: calc(100vw - 20px) !important;
+/* ---------- 3. 弹弹的：按压、卡片入场、浮窗长出来 ---------- */
+@keyframes pcl-fade {
+  from { opacity: 0; translate: 0 8px; }
+  to { opacity: 1; translate: none; }
+}
+
+html.pcl-skin main article {
+  animation: pcl-fade .26s cubic-bezier(.22, .9, .28, 1) both;
+}
+
+/* 卡片悬停轻轻抬一点，按下去压回一点 —— 只动 transform，不碰颜色 */
+html.pcl-skin main article,
+html.pcl-skin main [class*="ui-card-translucent"] {
+  transition: translate .16s cubic-bezier(.34, 1.4, .64, 1), scale .16s cubic-bezier(.34, 1.4, .64, 1) !important;
+}
+
+@media (hover: hover) {
+  html.pcl-skin main article:hover,
+  html.pcl-skin main [class*="ui-card-translucent"]:hover {
+    translate: 0 -2px;
   }
 }
 
-/* 帖子页拿封面图放大了 110% 再 blur 一整层当氛围底（blur 24px + 55% 不透明），
-   整页泛色、字发灰就是这一层，关掉。封面主图本身不受影响。 */
-[class*="blur-xl"][class*="scale-110"] {
-  opacity: 0 !important;
-}
-
-/* 顶栏 tab 的滑块：同一颗弹簧 */
-[class*="transition-[translate,width]"] {
+/* 顶栏 tab 的滑块：只有它是弹的，别的按钮不跟着弹 */
+html.pcl-skin [class*="transition-[translate,width]"] {
   border-radius: 10px;
   transition:
     translate .30s cubic-bezier(.34, 1.56, .64, 1),
     width .30s cubic-bezier(.34, 1.56, .64, 1) !important;
 }
 
-/* 列表换页时卡片淡着上来 */
-@keyframes pcl-fade {
-  from { opacity: 0; translate: 0 6px; }
-  to { opacity: 1; translate: none; }
+/* 只有小组件按下去才缩一下：页签、图标按钮、分段控件；正文按钮和卡片不缩 */
+html.pcl-skin [role="tab"],
+html.pcl-skin header button,
+html.pcl-skin header a[class*="rounded"],
+html.pcl-skin [data-pcl-float] button,
+html.pcl-skin [data-pcl-float] a[class*="rounded"] {
+  transition: scale .16s cubic-bezier(.34, 1.56, .64, 1);
 }
 
-article {
-  animation: pcl-fade .28s cubic-bezier(.22, .9, .28, 1) both;
-}
-
-/* ---------- 5. 点按回弹 ----------
-   卡片按下去只压暗底色，不做整块缩放——大卡片一缩就像整页在往下沉；
-   按钮、页签这种小件才缩一下，松手都弹回。 */
-
-[class*="bg-(--ui-card-translucent)"]:active {
-  background-color: #1f2021 !important;
-}
-
-html:not(.dark) [class*="bg-(--ui-card-translucent)"]:active {
-  background-color: #f7f8fa !important;
-}
-
-button,
-a,
-[role="button"] {
-  transition: scale .18s cubic-bezier(.34, 1.56, .64, 1), opacity .16s linear;
-}
-
-button:active,
-a:active,
-[role="button"]:active {
+html.pcl-skin [role="tab"]:active,
+html.pcl-skin header button:active,
+html.pcl-skin header a[class*="rounded"]:active,
+html.pcl-skin [data-pcl-float] button:active,
+html.pcl-skin [data-pcl-float] a[class*="rounded"]:active {
   scale: .96;
 }
 
-/* 顶栏里的页签、图标按钮，按下去给一层底 */
-header a:active,
-header button:active {
-  background-color: rgba(255, 255, 255, .08) !important;
-}
-
-html:not(.dark) header a:active,
-html:not(.dark) header button:active {
-  background-color: rgba(17, 19, 26, .06) !important;
-}
-
-/* 输入框 */
-html.dark input,
-html.dark textarea,
-html.dark select {
-  background-color: rgba(255, 255, 255, .05) !important;
-  border-color: rgba(255, 255, 255, .10) !important;
-  border-radius: 10px !important;
-}
-
-input:focus,
-textarea:focus {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(240, 51, 44, .20);
-  border-color: rgba(240, 51, 44, .45) !important;
-}
-
-/* ---------- 6. 二层：二级窗口实底 ----------
-   只挑真正浮起来的那个面（popover / dialog / 菜单面板），不给全屏包裹层铺底色。 */
-
-.pcl-sheet [class*="bg-(--ui-card-translucent)"],
-.pcl-sheet[class*="bg-(--ui-card-translucent)"],
-[class*="reka-popover-content-transform-origin"],
-[class*="reka-dialog-content"],
-[class*="reka-dropdown-menu-content"] {
-  background-color: rgba(52, 53, 56, .76) !important;
-  background-image: none !important;
-  -webkit-backdrop-filter: blur(36px) saturate(1.2) !important;
-  backdrop-filter: blur(36px) saturate(1.2) !important;
-  border-radius: 24px !important;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, .11),
-    0 22px 48px -28px rgba(0, 0, 0, .92) !important;
-}
-
-html:not(.dark) .pcl-sheet [class*="bg-(--ui-card-translucent)"],
-html:not(.dark) .pcl-sheet[class*="bg-(--ui-card-translucent)"],
-html:not(.dark) [class*="reka-popover-content-transform-origin"],
-html:not(.dark) [class*="reka-dialog-content"],
-html:not(.dark) [class*="reka-dropdown-menu-content"] {
-  background-color: rgba(255, 255, 255, .82) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(1.55) !important;
-  backdrop-filter: blur(32px) saturate(1.55) !important;
-  box-shadow:
-    inset 0 0 0 1px rgba(17, 19, 26, .08),
-    0 24px 48px -28px rgba(19, 21, 30, .5) !important;
-}
-
-/* ---------- 7. 窗口过渡：从点下去那个位置长出来 ----------
-   --pcl-ox / --pcl-oy / --pcl-mx / --pcl-my 由 content.js 按点击点算好写进来。
-   只动 scale / translate / opacity，不接管站点自己的 transform。 */
-
 @keyframes pcl-pop {
-  from {
-    opacity: 0;
-    scale: .94;
-  }
+  from { opacity: 0; scale: .94; }
   to { opacity: 1; scale: 1; }
+}
+
+@keyframes pcl-rise {
+  from { opacity: 0; translate: 0 10px; }
+  to { opacity: 1; translate: none; }
 }
 
 @keyframes pcl-veil-in {
@@ -209,95 +161,93 @@ html:not(.dark) [class*="reka-dropdown-menu-content"] {
 
 .pcl-sheet {
   transform-origin: var(--pcl-ox, 50%) var(--pcl-oy, 40%);
-  animation: pcl-pop .46s cubic-bezier(.34, 1.56, .64, 1) .14s both !important;
+  animation: pcl-pop .36s cubic-bezier(.34, 1.56, .64, 1) .08s both !important;
 }
 
-/* 大半屏的大模态（等级成长、设置这类）：只淡入上浮一点点，不从角落张开 */
-@keyframes pcl-rise {
+.pcl-sheet.pcl-sheet-lg {
+  animation: pcl-rise .28s cubic-bezier(.22, .9, .28, 1) both !important;
+}
+
+.pcl-sheet[role="menu"] {
+  animation-duration: .30s !important;
+  animation-delay: .04s !important;
+}
+
+.pcl-veil {
+  animation: pcl-veil-in .24s cubic-bezier(.22, .9, .28, 1) both !important;
+}
+
+/* 返回：只淡进来，绝不做上下位移（帖子页那一下"先往下一震再回去"就是位移害的） */
+@keyframes pcl-back-in {
+  from { opacity: .82; }
+  to { opacity: 1; }
+}
+
+html.pcl-skin body.pcl-back-in main {
+  animation: pcl-back-in .18s cubic-bezier(.22, .9, .28, 1) both;
+}
+
+/* 页签 / 筛选切换：内容淡一下，不位移 */
+@keyframes pcl-soft-in {
+  from { opacity: .86; }
+  to { opacity: 1; }
+}
+
+html.pcl-skin body.pcl-soft main {
+  animation: pcl-soft-in .22s ease both;
+}
+
+/* 图片加载：只在出现时淡入，不加圆角、不动形状 */
+@keyframes pcl-img-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-.pcl-sheet.pcl-sheet-lg {
-  animation: pcl-rise .32s cubic-bezier(.22, .9, .28, 1) .10s both !important;
+html.pcl-skin main img {
+  animation: pcl-img-in .24s ease both;
 }
 
-/* 菜单是"展开"不是"登场"，更快、更贴触发点 */
-.pcl-sheet[role="menu"],
-[role="menu"].pcl-sheet {
-  animation-duration: .34s !important;
-  animation-delay: .06s !important;
+/* ---------- 4. 帖子 / 作品的共享元素过渡（返回方向也认） ---------- */
+::view-transition-group(postcard) {
+  animation-duration: .40s;
+  animation-timing-function: cubic-bezier(.22, .9, .28, 1);
 }
 
-.pcl-veil {
-  animation: pcl-veil-in .30s cubic-bezier(.22, .9, .28, 1) both !important;
-}
-
-/* ---------- 8. 原生面统一 ----------
-   站点自己还有几层中性灰：卡片用的 bg-default、页面底条用的 bg-(--ui-bg-shell)、
-   资料卡 desktop 下那层。它们跟一级卡不是同一个色，挨在一起就是"两种灰拼一块"。
-   这里全归到一级卡的色上，只靠深浅和描边分层，不再出现第二种灰。 */
-[class*="bg-default"]:not(html):not(body),
-footer[class] {
-  background-color: var(--ui-card-translucent) !important;
-  background-image: none !important;
-}
-
-/* 卡片底色统一了，hover 也统一跟着走，别一边变一边不变 */
-[class*="bg-default"][class*="hover:bg-"] {
-  transition: background-color .18s var(--ease) !important;
-}
-
-/* 顶栏/底栏里那层"铺满 + 自己再 blur 一次"的底，会把半透明的栏糊成实色，
-   模糊也就看不出来了。把它交还给栏本体，只留一份半透明 + 一份模糊。 */
-header [class*="bg-(--ui-bg-shell)"],
-[class*="fixed"][class*="bottom-0"] [class*="bg-(--ui-bg-shell)"] {
-  background-color: transparent !important;
-  background-image: none !important;
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
-}
-
-/* ---------- 9. 滚动条 ---------- */
-
-* { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .14) transparent; }
-
-html:not(.dark) * { scrollbar-color: rgba(17, 19, 26, .18) transparent; }
-
-/* ---------- 10. 页面过渡（全站，和扩展浮窗同一手感） ----------
-   新页淡入 + 极轻微缩放，旧页快速退掉；不做共享元素、不做形态变换。
-   0.26 秒，前快后缓，点一下就过去，不卡也不"弹"。 */
-::view-transition-group(root) {
-  animation-duration: .26s;
-  animation-timing-function: cubic-bezier(.22, 1, .36, 1);
-}
-
-::view-transition-old(root) {
-  animation: pcl-vt-out .18s cubic-bezier(.4, 0, .6, 1) both;
-  mix-blend-mode: normal;
-}
-
+::view-transition-old(root),
 ::view-transition-new(root) {
-  animation: pcl-vt-in .26s cubic-bezier(.22, 1, .36, 1) both;
-  mix-blend-mode: normal;
+  animation-duration: .26s;
 }
 
-@keyframes pcl-vt-in {
-  from { opacity: 0; transform: scale(.985); }
-  to   { opacity: 1; transform: scale(1); }
+/* 长文：压到 .20s，别让放大那一下发闷 */
+html.pcl-vt-fast::view-transition-group(postcard) {
+  animation-duration: .20s;
 }
 
-@keyframes pcl-vt-out {
-  from { opacity: 1; }
-  to   { opacity: 0; }
+html.pcl-vt-fast::view-transition-old(root),
+html.pcl-vt-fast::view-transition-new(root) {
+  animation-duration: .16s;
 }
 
-/* 系统要求减少动态时直接瞬切 */
+/* ---------- 5. 关动效 / 系统减动效 ---------- */
+html.pcl-skin.pcl-noanim *,
+html.pcl-skin.pcl-noanim .pcl-sheet,
+html.pcl-skin.pcl-noanim .pcl-veil {
+  animation-duration: .001ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+}
+
+html.pcl-skin.pcl-noanim::view-transition-group(postcard) {
+  animation-duration: .001ms !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(root),
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation-duration: .01s;
-    animation-timing-function: linear;
+  html.pcl-skin *,
+  html.pcl-skin .pcl-sheet,
+  html.pcl-skin .pcl-veil {
+    animation-duration: .001ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: .001ms !important;
   }
 }

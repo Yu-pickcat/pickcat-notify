@@ -23,6 +23,8 @@ const el = {
   modeApply: document.getElementById('modeApply'),
   modeDesc: document.getElementById('modeDesc'),
   maxSeg: document.getElementById('maxSeg'),
+  radiusSeg: document.getElementById('radiusSeg'),
+  swSquare: document.getElementById('swSquare'),
   swNotify: document.getElementById('swNotify'),
   swSiteSkin: document.getElementById('swSiteSkin'),
   swBadge: document.getElementById('swBadge'),
@@ -99,8 +101,7 @@ function glideSeg(node) {
   glide.style.width = (br.width / sr.width * 100).toFixed(2) + '%';
 }
 
-function markSeg(node, val) {
-  if (!node) return;
+function markSeg(node, val) {  if (!node) return;
   Array.prototype.forEach.call(node.children, function (b) {
     if (!b.dataset || b.dataset.v === undefined) return;
     b.setAttribute('data-on', String(b.dataset.v) === String(val) ? '1' : '0');
@@ -109,6 +110,14 @@ function markSeg(node, val) {
   if (node && node.isConnected) {
     window.requestAnimationFrame(function () { glideSeg(node); });
   }
+}
+
+function skinStyleNow() {
+  const st = (settings && settings.siteSkinStyle) || {};
+  return {
+    radius: [24, 28, 32].indexOf(Number(st.radius)) >= 0 ? Number(st.radius) : 28,
+    square: !!st.square
+  };
 }
 
 function renderSettings(s) {
@@ -121,6 +130,9 @@ function renderSettings(s) {
     ? '其他方式…'
     : (mode === 'custom' ? '自定义：' + chain.map(function (k) { return MODE_SHORT[k] || k; }).join(' → ') + ' · 改' : MODE_NAME[mode] + ' · 改');
   markSeg(el.maxSeg, s.notifyMax || 3);
+  const st = s.siteSkinStyle || {};
+  markSeg(el.radiusSeg, [24, 28, 32].indexOf(Number(st.radius)) >= 0 ? Number(st.radius) : 28);
+  el.swSquare.classList.toggle('on', !!st.square);
   el.modeDesc.textContent = mode === 'custom'
     ? '自定义顺序：' + chain.map(function (k, i) { return (i + 1) + '. ' + MODE_NAME[k]; }).join('　') + '；前一步没成就试下一步'
     : MODE_DESC[mode];
@@ -293,8 +305,7 @@ el.maxSeg.addEventListener('click', function (e) {
   save({ notifyMax: Number(b.dataset.v) });
 });
 
-[['swNotify', 'notify'], ['swBadge', 'badge'], ['swSound', 'sound'], ['swSiteSkin', 'siteSkin']]
-  .forEach(function (pair) {
+[['swNotify', 'notify'], ['swBadge', 'badge'], ['swSound', 'sound'], ['swSiteSkin', 'siteSkin']]  .forEach(function (pair) {
     const node = el[pair[0]];
     node.addEventListener('click', function () {
       const next = !node.classList.contains('on');
@@ -304,6 +315,21 @@ el.maxSeg.addEventListener('click', function (e) {
       save(patch);
     });
   });
+
+el.radiusSeg.addEventListener('click', function (e) {
+  const b = e.target.closest('button');
+  if (!b || !b.dataset.v) return;
+  const v = Number(b.dataset.v);
+  if ([24, 28, 32].indexOf(v) < 0) return;
+  markSeg(el.radiusSeg, v);
+  save({ siteSkinStyle: Object.assign(skinStyleNow(), { radius: v }) });
+});
+
+el.swSquare.addEventListener('click', function () {
+  const next = !el.swSquare.classList.contains('on');
+  el.swSquare.classList.toggle('on', next);
+  save({ siteSkinStyle: Object.assign(skinStyleNow(), { square: next }) });
+});
 
 /* 五类消息单独开 / 关 */
 [['swMention', 'mention'], ['swReply', 'reply'], ['swLike', 'like'], ['swFollow', 'follow'], ['swSystem', 'system']]

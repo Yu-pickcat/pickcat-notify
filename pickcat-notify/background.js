@@ -1141,15 +1141,29 @@ chrome.notifications.onButtonClicked.addListener(async function (id, index) {
 
 /* 每个版本到底改了什么：升级提示里直接列出来，不再写空话 */
 const UPDATE_NOTES = {
-  '2.9.1': [
-    '站内任何跳转都有过渡了：论坛、帖子、作品、分类、标签、消息中心，点哪儿都有一下',
-    '手感跟扩展浮窗一样：新页淡入 + 极轻微缩放，0.26 秒，点下去立刻响应',
-    '不卡也不弹；系统开了「减少动态效果」就瞬切'
+  '2.8.6': [
+    '基于 V2.8.0：站点配色一个值不改、模糊按原站、头像和图片完全不碰、手机底栏完全不动',
+    '手机上顶栏一律不悬浮（包括没有底栏的页面），顶部保持原站；桌面端保留悬浮顶栏，860 窄窗照旧',
+    '圆角统一一把尺子：卡片 28（可切 24/32）、浮窗同级、输入 12；修掉头像外框被压成方框的问题',
+    '「分享你的想法」入口按钮圆角跟卡片一套，不再在一圈圆角里突兀',
+    '帖子过渡保留「卡片 → 帖子页」；桌面作品放大过渡整套撤回，作品恢复站点直接跳转',
+    '设置页「站点外观」标注测试版，说明文案与实际行为对齐；与 PICKCAT Plus / PickScribe 互不抢界面'
   ],
-  '2.9.0': [
-    '全站跳转都加上了过渡：论坛首页、帖子页、作品页、分类与标签、消息中心，任意两个页面之间的切换都有淡入淡出',
-    '帖子、作品卡片还是从卡片本身放大到详情页标题，其余页面走整页交叉淡入，节奏统一',
-    '过场时长短、只走合成层，不卡顿；系统开了「减少动态效果」就自动瞬切'
+  '2.8.3': [
+    '头像相关的一切都交还站点：不再打标记、不再改圆角，头像框、头像图、封面全部原样放着',
+    '保留本轮其它修正：悬浮顶栏亮色模式不再变暗、手机底栏完全不动、与 PICKCAT Plus / PickScribe 互不抢界面'
+  ],
+  '2.8.2': [
+    '头像外框改回真圆：只认头像本身（类名/alt/src 带 avatar 的），普通图片、封面、精选作品仍然一律不动',
+    '修悬浮顶栏在亮色模式下变暗：取不到站点栏底色时按页面明暗给白/黑兜底，切系统主题后重新取色',
+    '手机底栏彻底交还站点：不再悬浮、不再加圆角/模糊/阴影，按原站原样摆着',
+    '与 PICKCAT Plus 2.6.0、PickScribe 4.3.0.2 共存：它们注入的顶栏/底栏/弹窗/头像不再被本站皮肤接管'
+  ],
+  '2.8.1': [
+    '按 V2.8.0 重做：这一版只保留两件改动——圆角和打开动效，配色、模糊、顶栏底栏几何全部交回站点自己',
+    '圆角收成一把尺子：卡片 28（设置里可切 24/28/32）、浮层 30、输入 10、标签 6、图片 12，列表与正文直角；另给「全直角」开关',
+    '修掉亮色模式看不见的字和图标：以前只在暗色下成立的写法全部撤掉，亮色不再白底白字',
+    '过渡只留「首页卡片 → 帖子页」这一条，长帖子自动把时长压到 0.20 秒；返回不接管，浏览器后退就是原生后退'
   ],
   '2.8.0': [
     '外观整套换掉：三页和 Pickcat 网页统一成墨底 + 连续圆角，一级内容纯实底，只有浮起来的顶栏、底栏、浮窗才用浏览器原生模糊',
@@ -1306,6 +1320,13 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       }
       if (msg.patch && msg.patch.siteSkin != null) {
         next.siteSkin = !!msg.patch.siteSkin;
+      }
+      if (msg.patch && msg.patch.siteSkinStyle && typeof msg.patch.siteSkinStyle === 'object') {
+        const s = msg.patch.siteSkinStyle;
+        const keep = Object.assign({ radius: 28, square: false }, next.siteSkinStyle || {});
+        if (s.radius != null) keep.radius = [24, 28, 32].indexOf(Number(s.radius)) >= 0 ? Number(s.radius) : 28;
+        if (s.square != null) keep.square = !!s.square;
+        next.siteSkinStyle = keep;
       }
       if (msg.patch && Array.isArray(msg.patch.chain)) {
         const all = ['page', 'direct', 'window'];

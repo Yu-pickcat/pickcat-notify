@@ -85,6 +85,8 @@ function stripSheets() {
 
 function applySkin(on) {
   skinOn = !!on;
+  document.documentElement.classList.toggle('pcl-skin', skinOn);
+  document.documentElement.classList.toggle('pcl-skin-on', skinOn);
   const has = document.getElementById(SKIN_ID);
   if (on) {
     if (!has) {
@@ -100,6 +102,8 @@ function applySkin(on) {
     return;
   }
   if (has && has.parentNode) has.parentNode.removeChild(has);
+  const ctas = document.querySelectorAll('[data-pcl-cta]');
+  for (let i = 0; i < ctas.length; i++) delete ctas[i].dataset.pclCta;
   paintShell(true);
   stripSheets();
 }
@@ -116,17 +120,27 @@ const SHELL_PROPS = [
 
 function pickHead() {
   const list = document.querySelectorAll('header');
+  let loose = null;
   for (let i = 0; i < list.length; i++) {
+    if (list[i].closest && list[i].closest(AVA_ROOT)) continue;
     const r = list[i].getBoundingClientRect();
     /* 要里面带链接（论坛/作品/搜索）才是站点顶栏，其它扩展挂的 header 不带这些 */
     if (r.width > 300 && r.height > 40 && r.height < 140 && list[i].querySelector('a[href]')) return list[i];
+    /* 登录、空态这种没有链接的页：只按尺寸 + 是否固定/粘在第几条来认，别让顶栏忽然不悬浮 */
+    if (!loose && r.width > 240 && r.height > 36 && r.height < 160) {
+      const pos = getComputedStyle(list[i]).position;
+      if (pos === 'fixed' || pos === 'sticky' || r.top < 40) loose = list[i];
+    }
   }
-  return null;
+  return loose;
 }
+
+/* 图片、头像、封面一律不碰：原站什么样就什么样，这里不做任何圆角改写。 */
 
 function pickBar() {
   const list = document.querySelectorAll('[class*="fixed"][class*="bottom-0"]');
   for (let i = 0; i < list.length; i++) {
+    if (list[i].closest && list[i].closest(AVA_ROOT)) continue;
     const r = list[i].getBoundingClientRect();
     /* 要里面带导航链接才算站点底栏，别的扩展的悬浮条没有链接，别误伤 */
     if (r.width > 200 && r.height > 30 && r.height < 170 && list[i].querySelector('a[href]')) return list[i];
@@ -139,59 +153,134 @@ function clearShell(el) {
   for (let i = 0; i < SHELL_PROPS.length; i++) el.style.removeProperty(SHELL_PROPS[i]);
 }
 
+/* 页面现在是亮底还是暗底：看 body/html 的底色亮度，别只看 html.dark ——
+   站点"跟随系统"时可能挂的是别的标记，凭类名会判反。 */
+function pageLight() {
+  const cands = [document.body, document.documentElement];
+  for (let i = 0; i < cands.length; i++) {
+    if (!cands[i]) continue;
+    const m = String(getComputedStyle(cands[i]).backgroundColor).match(/[\d.]+/g);
+    if (!m || m.length < 3) continue;
+    const a = m.length > 3 ? Number(m[3]) : 1;
+    if (a <= 0.02) continue;
+    const lum = (0.299 * Number(m[0]) + 0.587 * Number(m[1]) + 0.114 * Number(m[2])) / 255;
+    return lum > 0.55;
+  }
+  return !document.documentElement.classList.contains('dark');
+}
+
+/* 把站点自己的栏底色转成半透明，色相不变、只降不透明度。
+   取不到颜色（透明 / 无值）时按页面明暗给一个同色系兜底，绝不用"黑"。 */
+function tint(color, alpha, light) {
+  const m = String(color).match(/[\d.]+/g);
+  const a0 = m && m.length > 3 ? Number(m[3]) : (m && m.length === 3 ? 1 : 0);
+  if (!m || m.length < 3 || a0 <= 0.02) {
+    return light ? 'rgba(255, 255, 255, ' + alpha + ')' : 'rgba(24, 25, 29, ' + alpha + ')';
+  }
+  const r = Number(m[0]), g = Number(m[1]), b = Number(m[2]);
+  return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + (alpha * a0).toFixed(2) + ')';
+}
+
+/* 顶栏悬浮要的那 10px，得从内容上边补回来，否则会压住第一张卡 */
+function padTop(el, extra) {
+  if (!el) return;
+  if (el.dataset.pclPad0 == null) {
+    const cur = parseFloat(getComputedStyle(el).paddingTop) || 0;
+    el.dataset.pclPad0 = String(cur);
+    el.dataset.pclPadWas = el.style.paddingTop;
+  }
+  const base = Number(el.dataset.pclPad0) || 0;
+  if (extra) el.style.setProperty('padding-top', (base + extra) + 'px', 'important');
+  else el.style.removeProperty('padding-top');
+}
+
+function scrollBox(head) {
+  const box = document.querySelector('.v3-scroll-body');
+  if (box) return box;
+  const main = document.querySelector('main');
+  return main ? main.parentElement : null;
+}
+
+/* 站点关于头像的一切（圆角、尺寸、容器）都不碰，原样放着。
+   这里只留一份「其它扩展注入的界面」名单，用来避免抢它们的顶栏/弹窗/过渡。 */
+const AVA_ROOT = '#pickcat-plus-root, .pickcat-plus, .pickcat-ws, [class*="pickscribe"], [class^="pcr-"], [class^="pcai-"], [class^="pco-"], [class^="pcg-"], [class^="pch-"], [class^="pcs-"]';
+
+
+/* 「分享你的想法」这类整条 CTA：只按文字认出这一条打标，圆角交给 site-skin.css。
+   其它按钮一概不碰；换页后 DOM 重建，靠下面的合并定时器补标。 */
+function markCta() {
+  const list = document.querySelectorAll('main a[class*="rounded"], main button[class*="rounded"]');
+  for (let i = 0; i < list.length; i++) {
+    const el = list[i];
+    if (el.dataset.pclCta) continue;
+    if (el.closest && el.closest(AVA_ROOT)) continue;
+    const t = (el.textContent || '').trim();
+    if (t.length > 12 || t.indexOf('分享你的想法') < 0) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 120 || r.height < 30 || r.height > 80) continue;
+    el.dataset.pclCta = '1';
+  }
+}
+
 function paintShell(off) {
-  /* 不传 off 时按当前开关走：关着就只做清理，别把顶栏又套回去 */
   off = off || !skinOn;
   const head = pickHead();
   const bar = pickBar();
-  const dark = document.documentElement.classList.contains('dark');
-  const narrow = window.innerWidth <= 1023;
-  const blur = dark ? 'blur(34px) saturate(1.3)' : 'blur(30px) saturate(1.6)';
-  const bgBar = dark ? 'rgba(46, 47, 50, .74)' : 'rgba(255, 255, 255, .80)';
-  const ring = dark ? 'inset 0 0 0 1px rgba(255, 255, 255, .10)' : 'inset 0 0 0 1px rgba(17, 19, 26, .08)';
+  const light = pageLight();
+  /* 手机上一律不浮：宽度到手机档，或站点自己的底栏真的显示了，就都算手机布局。
+     个人主页这种没有底栏的手机页也不能浮——上面保持站点原样。 */
+  const narrow = window.innerWidth <= 767 || (!!bar && (function () {
+    const r = bar.getBoundingClientRect();
+    return r.width > 120 && r.height > 24 && r.height <= 200;
+  })());
+  const box = scrollBox();
 
   if (head) {
     if (off || narrow) {
       clearShell(head);
+      head.removeAttribute('data-pcl-float');
+      padTop(box, 0);
     } else {
+      const cs = getComputedStyle(head);
+      const theme = light ? 'l' : 'd';
+      if (!head.dataset.pclBase || head.dataset.pclTheme !== theme) {
+        head.dataset.pclBase = cs.backgroundColor;
+        head.dataset.pclTheme = theme;
+      }
+      const base = tint(head.dataset.pclBase, .82, light);
+      const blur = cs.backdropFilter && cs.backdropFilter !== 'none' ? cs.backdropFilter : 'blur(24px) saturate(1.25)';
+      head.setAttribute('data-pcl-float', 'head');
       head.style.setProperty('top', '10px', 'important');
-      head.style.setProperty('margin', '10px 10px 0', 'important');
+      head.style.setProperty('margin', '0 10px', 'important');
       head.style.setProperty('border', '0', 'important');
-      head.style.setProperty('border-radius', '18px', 'important');
-      head.style.setProperty('background', bgBar, 'important');
+      head.style.setProperty('background', base, 'important');
       head.style.setProperty('background-image', 'none', 'important');
       head.style.setProperty('-webkit-backdrop-filter', blur, 'important');
       head.style.setProperty('backdrop-filter', blur, 'important');
-      head.style.setProperty('box-shadow', ring + (dark
-        ? ', 0 14px 36px -22px rgba(0, 0, 0, .95)'
-        : ', 0 8px 20px -18px rgba(19, 21, 30, .45)'), 'important');
+      head.style.setProperty('box-shadow', light
+        ? '0 10px 26px -22px rgba(19, 21, 30, .38)'
+        : '0 12px 30px -24px rgba(0, 0, 0, .9)', 'important');
+      padTop(box, 10);
     }
   }
 
+  /* 手机底栏：一律不动，原站怎么放就怎么放（连历史版本可能落下的内联也清掉） */
   if (bar) {
-    if (off || !narrow) {
-      clearShell(bar);
-    } else {
-      bar.style.setProperty('left', '10px', 'important');
-      bar.style.setProperty('right', '10px', 'important');
-      bar.style.setProperty('bottom', '10px', 'important');
-      bar.style.setProperty('width', 'auto', 'important');
-      bar.style.setProperty('border-radius', '22px', 'important');
-      bar.style.setProperty('background', bgBar, 'important');
-      bar.style.setProperty('background-image', 'none', 'important');
-      bar.style.setProperty('-webkit-backdrop-filter', blur, 'important');
-      bar.style.setProperty('backdrop-filter', blur, 'important');
-      bar.style.setProperty('box-shadow', ring + (dark
-        ? ', 0 -14px 36px -22px rgba(0, 0, 0, .95)'
-        : ', 0 -14px 30px -22px rgba(19, 21, 30, .35)'), 'important');
-    }
+    clearShell(bar);
+    bar.removeAttribute('data-pcl-float');
   }
 }
 
 let shellTimer = 0;
-window.addEventListener('resize', function () {
+function scheduleShell(delay) {
   window.clearTimeout(shellTimer);
-  shellTimer = window.setTimeout(function () { paintShell(); }, 180);
+  shellTimer = window.setTimeout(function () { paintShell(); markCta(); }, delay == null ? 140 : delay);
+}
+
+window.addEventListener('resize', function () {
+  /* 窗口一变小，立刻按新宽度重算：哪条该浮、哪条该回原位，不在中间态停留 */
+  paintShell();
+  scheduleShell(160);
 }, false);
 
 /* ---------- 站点浮层：跟扩展面板同一套 MagicOS 弹出动作 ----------
@@ -247,6 +336,8 @@ function paintMotion() {
 
   function scan(node) {
     if (!node || node.nodeType !== 1) return;
+    /* 别的扩展（PICKCAT Plus / PickScribe）自己弹的窗口，别套本站的动效 */
+    if (node.closest && node.closest(AVA_ROOT)) return;
     if (node.matches && node.matches(SHEET)) {
       if (!node.dataset.pclDone) {
         node.dataset.pclDone = '1';
@@ -296,9 +387,8 @@ function paintMotion() {
       const added = list[i].addedNodes;
       for (let j = 0; j < added.length; j++) scan(added[j]);
     }
-    /* 换页会把顶栏/底栏整段重建，内联样式跟着没了，这里补回来（合并 180ms） */
-    window.clearTimeout(shellTimer);
-    shellTimer = window.setTimeout(function () { paintShell(); }, 180);
+    /* 换页会把顶栏/底栏整段重建，悬浮几何跟着丢了，这里补回来（合并 200ms） */
+    scheduleShell(200);
   });
 
   try {
@@ -308,70 +398,77 @@ function paintMotion() {
 
 paintMotion();
 
-/* ---------- 页面过渡：全站站内跳转都走一层浮窗式的淡入 ----------
-   站点是 SPA，点站内链接不整页刷新；用 View Transitions 包一层，
-   就是扩展浮窗那种手感：新页淡入 + 极轻微缩放（1 → 1.015 收回到 1），
-   不做共享元素、不做形态变换、不等页面内容渲染，点下去立刻响应。
-   外链、_blank、下载、修饰键点击一律放行，不拦。 */
-let bridgeBusy = false;
-
-/* 只接管"站内、当前窗口、普通左键"的链接 */
-function sameOriginLink(a) {
-  if (!a || !a.href) return false;
-  if (a.target && a.target !== '_self') return false;
-  if (a.hasAttribute('download')) return false;
-  var raw = a.getAttribute('href') || '';
-  if (!raw || raw.charAt(0) === '#') return false;
-  if (/^(mailto|tel|javascript):/i.test(raw)) return false;
-  var u;
-  try { u = new URL(a.href, location.href); } catch (e) { return false; }
-  return u.origin === location.origin;
+/* 页签 / 筛选切换：内容淡一下（不位移）。只在同页换列表时用，跳路由的交给站点。 */
+function paintSoft() {
+  document.addEventListener('click', function (e) {
+    if (!skinOn) return;
+    const t = e.target;
+    if (!t || !t.closest) return;
+    const hit = t.closest('[role="tab"], button[data-state], [data-pcl-soft]');
+    if (!hit) return;
+    if (hit.closest('a[href]')) return;
+    const b = document.body;
+    if (!b) return;
+    b.classList.remove('pcl-soft');
+    void b.offsetWidth;
+    b.classList.add('pcl-soft');
+    window.setTimeout(function () { b.classList.remove('pcl-soft'); }, 300);
+  }, true);
 }
 
-function bridgeGo(a) {
+paintSoft();
+
+/* ---------- 页面过渡：首页卡片点开，平滑过渡到帖子页 ----------
+   站点是 SPA，点帖子/作品链接不整页刷新；用 View Transitions API 包一层，
+   截住旧页面，把被点的卡片放大到帖子页标题，再让新页面淡入。
+   头像、名字、标签这些是别的链接，不在这里拦。 */
+let bridgeBusy = false;
+const BRIDGE_LINK = 'a[href*="/forum/post/"], a[href*="/works/"], a[href*="/work/"]';
+
+function bridgeGo(a, card) {
   if (bridgeBusy) return false;
   if (!document.startViewTransition) return false;
   bridgeBusy = true;
+  const name = 'postcard';
+  if (card && card.style) card.style.setProperty('view-transition-name', name);
+  const oldPath = window.location.pathname;
+  /* 长文帖子（卡片本身比一屏还高）：放大过渡会拖一会儿，把时长压短，别让人觉得卡住 */
+  const root = document.documentElement;
+  const tall = !!(card && card.getBoundingClientRect && card.getBoundingClientRect().height > window.innerHeight * 1.2);
+  root.classList.toggle('pcl-vt-fast', tall);
 
-  var done = false;
-  function release() {
-    if (done) return;
-    done = true;
-    bridgeBusy = false;
-  }
-  /* 保险丝：真出意外 1.5 秒后强制解锁，绝不把点击锁死 */
-  var grace = window.setTimeout(release, 1500);
-
-  var vt = null;
-  try {
-    vt = document.startViewTransition(function () {
-      a.click();
-      /* 让出两帧给站点把新页面铺上，再拍快照；这点延迟看不出来 */
-      return new Promise(function (resolve) {
-        window.requestAnimationFrame(function () {
-          window.requestAnimationFrame(resolve);
-        });
-      });
+  const vt = document.startViewTransition(function () {
+    a.click();
+    return new Promise(function (resolve) {
+      let n = 0;
+      const iv = window.setInterval(function () {
+        n += 1;
+        const changed = window.location.pathname !== oldPath;
+        if (changed) {
+          /* 等帖子页把标题/正文容器渲染出来再定格，共享元素才有落点 */
+          const target = document.querySelector('article h1, main h1, h1, article');
+          if (target) target.style.setProperty('view-transition-name', name);
+          if (target || n > 30) {
+            window.clearInterval(iv);
+            resolve();
+          }
+        } else if (n > 50) {
+          window.clearInterval(iv);
+          resolve();
+        }
+      }, 50);
     });
-  } catch (err) {
-    /* 过渡起步就失败：立刻解锁，让调用方走普通跳转 */
-    window.clearTimeout(grace);
-    release();
-    return false;
-  }
-  if (!vt) {
-    window.clearTimeout(grace);
-    release();
-    return false;
-  }
+  });
 
   vt.finished.then(function () {
-    window.clearTimeout(grace);
-    release();
+    bridgeBusy = false;
+    document.documentElement.classList.remove('pcl-vt-fast');
+    if (card && card.style) card.style.removeProperty('view-transition-name');
+    const target = document.querySelector('article h1, main h1, h1, article');
+    if (target) target.style.removeProperty('view-transition-name');
   }).catch(function () {
-    /* 过渡被跳过 / 取消也要解锁，否则点击都会失灵 */
-    window.clearTimeout(grace);
-    release();
+    bridgeBusy = false;
+    document.documentElement.classList.remove('pcl-vt-fast');
   });
   return true;
 }
@@ -381,54 +478,47 @@ function paintBridge() {
     if (bridgeBusy) return;
     if (e.defaultPrevented || e.button !== 0) return;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    var t = e.target;
+    const t = e.target;
     if (!t || !t.closest) return;
-    var a = t.closest('a[href]');
-    if (!sameOriginLink(a)) return;
-    /* 没有过渡能力就完全放行，绝不吞掉点击 */
-    if (!document.startViewTransition) return;
-    if (!bridgeGo(a)) return;
-    /* 拦下这一次，交给 a.click() 重新派发，避免站点自己也跳一遍 */
+    const a = t.closest(BRIDGE_LINK);
+    if (!a || !a.href) return;
+    /* 别的扩展的浮层预览里点链接，交给它们自己处理，别再套一层共享元素过渡 */
+    if (a.closest && a.closest(AVA_ROOT)) return;
     e.preventDefault();
-    e.stopPropagation();
+    const card = a.closest('article, [class*="bg-(--ui-card-translucent)"]') || a;
+    bridgeGo(a, card);
   }, true);
 }
 
 paintBridge();
 
-/* 整块可点：帖子卡、作品卡这一整片都能点进去，不用非得点中那行标题字。
-   只在"没点在任何可交互元素上、也没在选文本"时接管，所以按钮、点赞、输入框都不受影响。 */
-function paintHit() {
-  /* 帖子页、作品页这种详情页里，正文常常引用别的帖子链接，
-     整卡接管会把"点正文"误跳成别的帖子，所以详情页不接管。 */
-  const p = window.location.pathname;
-  if (/\/(forum\/post|works|work)\//.test(p)) return;
+/* 圆角档位与开关：只动圆角和一个"关动效"类，不碰任何颜色 */
+let skinStyle = { radius: 28, square: false, motion: true };
 
-  const CARD = 'article, [class*="bg-(--ui-card-translucent)"]';
-  const LINK = 'a[href*="/forum/post/"], a[href*="/works/"], a[href*="/work/"]';
-
-  document.addEventListener('click', function (e) {
-    if (e.defaultPrevented || e.button !== 0) return;
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    const t = e.target;
-    if (!t || !t.closest) return;
-    if (t.closest('a, button, input, textarea, select, label, [role="button"], [role="menuitem"], [contenteditable="true"]')) return;
-    /* 顶栏、侧栏、底栏、弹层里一律不接管 */
-    if (t.closest('header, nav, aside, footer, [role="dialog"], [role="menu"]')) return;
-    const sel = window.getSelection();
-    if (sel && String(sel).length > 0) return;
-
-    /* 只认点到的那一张卡，绝不往外扩到列表容器——否则点页面空白都会跳 */
-    const card = t.closest(CARD);
-    if (!card) return;
-    const a = card.querySelector(LINK);
-    if (!a || !a.href) return;
-    if (bridgeGo(a)) return;
-    a.click();
-  }, false);
+function applySkinStyle(st) {
+  skinStyle = Object.assign({ radius: 28, square: false, motion: true }, st || {});
+  if ([24, 28, 32].indexOf(Number(skinStyle.radius)) < 0) skinStyle.radius = 28;
+  const root = document.documentElement;
+  root.classList.remove('pcl-r24', 'pcl-r28', 'pcl-r32');
+  root.classList.add('pcl-r' + skinStyle.radius);
+  root.classList.toggle('pcl-square', !!skinStyle.square);
+  root.classList.toggle('pcl-noanim', skinStyle.motion === false);
 }
 
-paintHit();
+/* ---------- 返回：不拦事件，等路由自己换完再补一下入场 ----------
+   浏览器后退 / 手势返回 / 站内返回箭头都走 popstate；这里只读不拦：
+   完全交给站点换视图，换完再给 main 补一个 0.24s 的"从下面落上来"，
+   所以不会出现"点了返回却停在原地"那种卡死。 */
+window.addEventListener('popstate', function () {
+  if (!skinOn) return;
+  window.setTimeout(function () { paintShell(); }, 220);
+  const b = document.body;
+  if (!b) return;
+  b.classList.remove('pcl-back-in');
+  void b.offsetWidth;
+  b.classList.add('pcl-back-in');
+  window.setTimeout(function () { b.classList.remove('pcl-back-in'); }, 380);
+}, false);
 
 /* 先按「开着」挂上，再读设置覆盖，中间不会闪一下没样式 */
 applySkin(true);
@@ -436,10 +526,12 @@ applySkin(true);
 try {
   chrome.storage.local.get(['settings'], function (g) {
     const st = (g && g.settings) || {};
+    applySkinStyle(st.siteSkinStyle);
     applySkin(st.siteSkin !== false);
   });
   chrome.storage.onChanged.addListener(function (ch) {
     if (ch.settings && ch.settings.newValue) {
+      applySkinStyle(ch.settings.newValue.siteSkinStyle);
       applySkin(ch.settings.newValue.siteSkin !== false);
     }
   });
